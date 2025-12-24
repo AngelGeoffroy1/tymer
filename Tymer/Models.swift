@@ -30,7 +30,7 @@ struct User: Identifiable, Equatable {
 struct Moment: Identifiable {
     let id: UUID
     let author: User
-    let imageData: Data?
+    let imageName: String?  // Nom de l'image dans MockPhotos
     let placeholderColor: Color
     let capturedAt: Date
     var reactions: [Reaction]
@@ -38,14 +38,14 @@ struct Moment: Identifiable {
     init(
         id: UUID = UUID(),
         author: User,
-        imageData: Data? = nil,
+        imageName: String? = nil,
         placeholderColor: Color = .tymerDarkGray,
         capturedAt: Date = Date(),
         reactions: [Reaction] = []
     ) {
         self.id = id
         self.author = author
-        self.imageData = imageData
+        self.imageName = imageName
         self.placeholderColor = placeholderColor
         self.capturedAt = capturedAt
         self.reactions = reactions
@@ -161,6 +161,13 @@ enum AppScreen: Equatable {
     }
 }
 
+// MARK: - Mock Photo Names
+/// Les photos dans le dossier MockPhotos
+struct MockPhotoNames {
+    static let feedPhotos = ["photo1", "photo2", "photo3", "photo4", "photo5", "photo6"]
+    static let digestPhotos = ["photo1", "photo2", "photo3", "photo4", "photo5", "photo6", "photo1"]
+}
+
 // MARK: - Mock Data
 extension User {
     static let mockUsers: [User] = [
@@ -188,9 +195,13 @@ extension Moment {
             let hoursAgo = Double(index) * 0.5
             let date = calendar.date(byAdding: .minute, value: -Int(hoursAgo * 60), to: Date()) ?? Date()
             
+            // Utilise le nom de photo si disponible
+            let photoName = index < MockPhotoNames.feedPhotos.count ? MockPhotoNames.feedPhotos[index] : nil
+            
             return Moment(
                 author: user,
-                placeholderColor: user.avatarColor.opacity(0.3),
+                imageName: photoName,
+                placeholderColor: user.avatarColor.opacity(0.4),
                 capturedAt: date,
                 reactions: index % 2 == 0 ? [
                     Reaction(author: User.mockUsers.randomElement()!, type: .text("Super ! 🔥")),
@@ -205,9 +216,14 @@ extension Moment {
         return (0..<7).map { dayOffset in
             let date = calendar.date(byAdding: .day, value: -dayOffset, to: Date()) ?? Date()
             let colors: [Color] = [.red, .blue, .green, .orange, .purple, .pink, .cyan]
+            
+            // Utilise le nom de photo si disponible
+            let photoName = dayOffset < MockPhotoNames.digestPhotos.count ? MockPhotoNames.digestPhotos[dayOffset] : nil
+            
             return Moment(
                 author: User.currentUser,
-                placeholderColor: colors[dayOffset].opacity(0.3),
+                imageName: photoName,
+                placeholderColor: colors[dayOffset].opacity(0.4),
                 capturedAt: date
             )
         }

@@ -10,6 +10,7 @@ import SwiftUI
 struct DigestView: View {
     @Environment(AppState.self) private var appState
     @State private var dragOffset: CGFloat = 0
+    @State private var cardsAppeared = false
     
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
     
@@ -25,7 +26,7 @@ struct DigestView: View {
                 // Week info
                 weekInfoSection
                 
-                // Photo grid
+                // Photo grid with animation
                 photoGrid
                 
                 Spacer()
@@ -55,6 +56,15 @@ struct DigestView: View {
                     }
                 }
         )
+        .onAppear {
+            // Déclencher l'animation des cards
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {
+                cardsAppeared = true
+            }
+        }
+        .onDisappear {
+            cardsAppeared = false
+        }
     }
     
     // MARK: - Header
@@ -117,8 +127,15 @@ struct DigestView: View {
     // MARK: - Photo Grid
     private var photoGrid: some View {
         LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(appState.weeklyDigest) { moment in
+            ForEach(Array(appState.weeklyDigest.enumerated()), id: \.element.id) { index, moment in
                 MomentThumbnail(moment, size: thumbnailSize)
+                    .scaleEffect(cardsAppeared ? 1.0 : 0.5)
+                    .opacity(cardsAppeared ? 1.0 : 0)
+                    .animation(
+                        .spring(response: 0.4, dampingFraction: 0.7)
+                        .delay(Double(index) * 0.05),
+                        value: cardsAppeared
+                    )
             }
         }
         .padding(.horizontal, 20)

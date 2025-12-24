@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import AVFoundation
 
 // MARK: - App State
 @Observable
@@ -23,12 +24,13 @@ final class AppState {
     }
     
     var currentUser: User = .currentUser
-    var circle: [User] = User.mockUsers
+    var circle: [User] = []
     
     // MARK: Feed State
-    var moments: [Moment] = Moment.mockMoments()
+    var moments: [Moment] = []
     var hasPostedToday: Bool = false
     var currentMomentIndex: Int = 0
+    var myTodayMoment: Moment?
     
     // MARK: Time Window State
     var isWindowOpen: Bool = false
@@ -36,15 +38,20 @@ final class AppState {
     var nextWindowCountdown: String = ""
     
     // MARK: Weekly Digest
-    var weeklyDigest: [Moment] = Moment.mockWeeklyDigest()
+    var weeklyDigest: [Moment] = []
     
     // MARK: Debug Mode (pour tester sans restriction horaire)
     var debugModeEnabled: Bool = true
+    
+    // MARK: Audio Recording
+    var audioRecorder: AVAudioRecorder?
+    var isRecording: Bool = false
     
     private var timer: Timer?
     
     // MARK: - Initialization
     init() {
+        loadLocalData()
         updateTimeWindowStatus()
         startTimer()
     }
@@ -53,13 +60,57 @@ final class AppState {
         timer?.invalidate()
     }
     
+    // MARK: - Local Storage Keys
+    private enum StorageKey {
+        static let circle = "tymer_circle"
+        static let moments = "tymer_moments"
+        static let myMoment = "tymer_my_moment"
+        static let hasPosted = "tymer_has_posted"
+        static let lastPostDate = "tymer_last_post_date"
+    }
+    
+    // MARK: - Local Data Management
+    
+    func loadLocalData() {
+        // Load circle from UserDefaults (mock pour le proto)
+        if circle.isEmpty {
+            circle = User.mockUsers
+        }
+        
+        // Load moments
+        if moments.isEmpty {
+            moments = Moment.mockMoments()
+        }
+        
+        // Load digest
+        if weeklyDigest.isEmpty {
+            weeklyDigest = Moment.mockWeeklyDigest()
+        }
+        
+        // Check if posted today
+        checkTodayPost()
+    }
+    
+    private func checkTodayPost() {
+        if let lastPostDate = UserDefaults.standard.object(forKey: StorageKey.lastPostDate) as? Date {
+            let calendar = Calendar.current
+            hasPostedToday = calendar.isDateInToday(lastPostDate)
+            if !hasPostedToday {
+                myTodayMoment = nil
+            }
+        }
+    }
+    
+    func saveLocalData() {
+        // Dans une vraie app on sauvegarderait en JSON/CoreData
+        UserDefaults.standard.set(hasPostedToday, forKey: StorageKey.hasPosted)
+    }
+    
     // MARK: - Time Window Logic
     
-    /// Met à jour le statut de la fenêtre horaire
     func updateTimeWindowStatus() {
         let now = Date()
         
-        // En mode debug, la fenêtre est toujours ouverte
         if debugModeEnabled {
             isWindowOpen = true
             currentWindow = .morning
@@ -67,26 +118,23 @@ final class AppState {
             return
         }
         
-        // Vérifie si une fenêtre est ouverte
         for window in TimeWindow.all {
             if window.isOpen(at: now) {
                 isWindowOpen = true
                 currentWindow = window
                 if let remaining = window.remainingTime(at: now) {
                     let minutes = Int(remaining / 60)
-                    nextWindowCountdown = "Fermeture dans \(minutes) min"
+                    nextWindowCountdown = "Ferme dans \(minutes)min"
                 }
                 return
             }
         }
         
-        // Aucune fenêtre ouverte
         isWindowOpen = false
         currentWindow = nil
         nextWindowCountdown = calculateNextWindowCountdown(from: now)
     }
     
-    /// Calcule le temps jusqu'à la prochaine fenêtre
     private func calculateNextWindowCountdown(from date: Date) -> String {
         let calendar = Calendar.current
         let currentHour = calendar.component(.hour, from: date)
@@ -95,21 +143,18 @@ final class AppState {
         var nextDate: Date
         
         if currentHour < TimeWindow.morning.start {
-            // Avant 8h → prochaine fenêtre = matin
             nextWindow = .morning
             var components = calendar.dateComponents([.year, .month, .day], from: date)
             components.hour = TimeWindow.morning.start
             components.minute = 0
             nextDate = calendar.date(from: components) ?? date
         } else if currentHour < TimeWindow.evening.start {
-            // Entre 9h et 19h → prochaine fenêtre = soir
             nextWindow = .evening
             var components = calendar.dateComponents([.year, .month, .day], from: date)
             components.hour = TimeWindow.evening.start
             components.minute = 0
             nextDate = calendar.date(from: components) ?? date
         } else {
-            // Après 20h → prochaine fenêtre = matin demain
             nextWindow = .morning
             var components = calendar.dateComponents([.year, .month, .day], from: date)
             components.day! += 1
@@ -123,13 +168,12 @@ final class AppState {
         let minutes = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
         
         if hours > 0 {
-            return "Prochaine fenêtre (\(nextWindow.label)) dans \(hours)h\(minutes)"
+            return "\(nextWindow.label) dans \(hours)h\(minutes)"
         } else {
-            return "Prochaine fenêtre dans \(minutes) min"
+            return "Dans \(minutes)min"
         }
     }
     
-    /// Démarre le timer pour mettre à jour le countdown
     private func startTimer() {
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.updateTimeWindowStatus()
@@ -154,51 +198,112 @@ final class AppState {
         }
     }
     
-    // MARK: - Feed Actions
-    
-    /// Passe au moment suivant dans le feed
-    func nextMoment() -> Bool {
-        if currentMomentIndex < moments.count - 1 {
-            currentMomentIndex += 1
-            return true
-        }
-        return false // Fin du feed
-    }
-    
-    /// Revient au moment précédent
-    func previousMoment() -> Bool {
-        if currentMomentIndex > 0 {
-            currentMomentIndex -= 1
-            return true
-        }
-        return false
-    }
-    
-    /// Réinitialise le feed
-    func resetFeed() {
-        currentMomentIndex = 0
-    }
-    
     // MARK: - Circle Actions
     
-    /// Nombre d'amis dans le cercle
     var circleCount: Int { circle.count }
-    
-    /// Limite du cercle
     let circleLimit: Int = 25
-    
-    /// Peut encore ajouter des amis
     var canAddFriend: Bool { circleCount < circleLimit }
+    
+    func removeFriend(_ user: User) {
+        circle.removeAll { $0.id == user.id }
+        // Supprimer aussi ses moments du feed
+        moments.removeAll { $0.author.id == user.id }
+    }
+    
+    func addFriend(_ user: User) {
+        guard canAddFriend else { return }
+        circle.append(user)
+    }
     
     // MARK: - Post Actions
     
-    /// Simule la publication d'un moment
-    func postMoment(placeholderColor: Color = .tymerDarkGray) {
+    func postMoment(imageName: String? = nil, placeholderColor: Color = .tymerDarkGray) {
         let newMoment = Moment(
             author: currentUser,
-            placeholderColor: placeholderColor
+            imageName: imageName,
+            placeholderColor: placeholderColor,
+            capturedAt: Date()
         )
-        moments.insert(newMoment, at: 0)
+        
+        myTodayMoment = newMoment
+        weeklyDigest.insert(newMoment, at: 0)
         hasPostedToday = true
+        
+        // Sauvegarder la date du post
+        UserDefaults.standard.set(Date(), forKey: StorageKey.lastPostDate)
+        saveLocalData()
+    }
+    
+    // MARK: - Reaction Actions
+    
+    func addTextReaction(to moment: Moment, text: String) {
+        guard !text.isEmpty else { return }
+        
+        let reaction = Reaction(
+            author: currentUser,
+            type: .text(text)
+        )
+        
+        if let index = moments.firstIndex(where: { $0.id == moment.id }) {
+            moments[index].reactions.append(reaction)
+        }
+    }
+    
+    func addVoiceReaction(to moment: Moment, duration: TimeInterval) {
+        let reaction = Reaction(
+            author: currentUser,
+            type: .voice(duration: min(duration, 3)) // Max 3 secondes
+        )
+        
+        if let index = moments.firstIndex(where: { $0.id == moment.id }) {
+            moments[index].reactions.append(reaction)
+        }
+    }
+    
+    // MARK: - Audio Recording
+    
+    func startVoiceRecording() {
+        let audioSession = AVAudioSession.sharedInstance()
+        
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .default)
+            try audioSession.setActive(true)
+            
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let audioFilename = documentsPath.appendingPathComponent("voice_reaction_\(UUID().uuidString).m4a")
+            
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 44100,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            ]
+            
+            audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
+            audioRecorder?.record()
+            isRecording = true
+            
+            // Haptic feedback
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+            
+        } catch {
+            print("Failed to start recording: \(error)")
+        }
+    }
+    
+    func stopVoiceRecording() -> TimeInterval {
+        guard let recorder = audioRecorder, isRecording else { return 0 }
+        
+        let duration = recorder.currentTime
+        recorder.stop()
+        isRecording = false
+        audioRecorder = nil
+        
+        // Haptic feedback
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+        
+        return min(duration, 3) // Max 3 secondes
     }
 }

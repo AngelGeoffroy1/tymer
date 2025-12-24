@@ -7,33 +7,49 @@
 
 import SwiftUI
 
-// MARK: - Mock Photo Patterns
+// MARK: - Photo Loader Helper
+struct PhotoLoader {
+    /// Charge une image depuis le dossier MockPhotos ou les Assets
+    static func loadImage(named name: String) -> UIImage? {
+        // D'abord essayer les Assets
+        if let image = UIImage(named: name) {
+            return image
+        }
+        
+        // Ensuite essayer le bundle avec différentes extensions
+        let extensions = ["JPG", "jpg", "PNG", "png", "jpeg", "JPEG"]
+        for ext in extensions {
+            if let path = Bundle.main.path(forResource: name, ofType: ext),
+               let image = UIImage(contentsOfFile: path) {
+                return image
+            }
+        }
+        
+        return nil
+    }
+}
+
+// MARK: - Mock Photo Patterns (Fallback)
 struct MockPhotoPattern: View {
     let baseColor: Color
     let patternType: Int
     
     var body: some View {
         ZStack {
-            // Background gradient
             LinearGradient(
                 colors: [baseColor.opacity(0.6), baseColor.opacity(0.3)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             
-            // Pattern overlay based on type
             switch patternType % 4 {
             case 0:
-                // Circles pattern
                 circlesPattern
             case 1:
-                // Waves pattern
                 wavesPattern
             case 2:
-                // Diagonal lines
                 diagonalPattern
             default:
-                // Dots pattern
                 dotsPattern
             }
         }
@@ -51,11 +67,6 @@ struct MockPhotoPattern: View {
                     .fill(baseColor.opacity(0.15))
                     .frame(width: geo.size.width * 0.4)
                     .offset(x: -geo.size.width * 0.2, y: geo.size.height * 0.3)
-                
-                Circle()
-                    .stroke(baseColor.opacity(0.3), lineWidth: 2)
-                    .frame(width: geo.size.width * 0.5)
-                    .offset(x: geo.size.width * 0.1, y: geo.size.height * 0.1)
             }
         }
     }
@@ -128,12 +139,9 @@ struct MomentCard: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Photo mock avec pattern
-                MockPhotoPattern(
-                    baseColor: moment.placeholderColor,
-                    patternType: abs(moment.id.hashValue) % 4
-                )
-                .ignoresSafeArea()
+                // Photo ou placeholder
+                photoContent
+                    .ignoresSafeArea()
                 
                 // Overlay gradient pour lisibilité
                 VStack {
@@ -184,6 +192,22 @@ struct MomentCard: View {
             }
         }
     }
+    
+    @ViewBuilder
+    private var photoContent: some View {
+        if let imageName = moment.imageName, let uiImage = PhotoLoader.loadImage(named: imageName) {
+            // Vraie photo
+            Image(uiImage: uiImage)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } else {
+            // Fallback : pattern coloré
+            MockPhotoPattern(
+                baseColor: moment.placeholderColor,
+                patternType: abs(moment.id.hashValue) % 4
+            )
+        }
+    }
 }
 
 // MARK: - Moment Thumbnail (Grid)
@@ -198,16 +222,8 @@ struct MomentThumbnail: View {
     
     var body: some View {
         ZStack {
-            // Pattern background
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [moment.placeholderColor.opacity(0.6), moment.placeholderColor.opacity(0.3)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
+            // Photo ou pattern background
+            thumbnailContent
             
             // Date pour le digest
             VStack {
@@ -217,13 +233,35 @@ struct MomentThumbnail: View {
                     .foregroundColor(.tymerWhite)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.3))
+                    .background(Color.black.opacity(0.5))
                     .clipShape(Capsule())
                     .padding(8)
             }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+    
+    @ViewBuilder
+    private var thumbnailContent: some View {
+        if let imageName = moment.imageName, let uiImage = PhotoLoader.loadImage(named: imageName) {
+            // Vraie photo
+            Image(uiImage: uiImage)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: size, height: size)
+        } else {
+            // Fallback : gradient coloré
+            RoundedRectangle(cornerRadius: 12)
+                .fill(
+                    LinearGradient(
+                        colors: [moment.placeholderColor.opacity(0.6), moment.placeholderColor.opacity(0.3)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size, height: size)
+        }
     }
     
     private var dayString: String {
@@ -244,7 +282,6 @@ struct FeedEndCard: View {
         VStack(spacing: 32) {
             Spacer()
             
-            // Checkmark animé
             ZStack {
                 Circle()
                     .stroke(Color.tymerWhite.opacity(0.2), lineWidth: 2)

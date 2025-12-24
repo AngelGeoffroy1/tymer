@@ -11,6 +11,8 @@ struct CircleView: View {
     @Environment(AppState.self) private var appState
     @State private var showInviteSheet = false
     @State private var dragOffset: CGFloat = 0
+    @State private var selectedFriend: User?
+    @State private var showDeleteConfirmation = false
     
     var body: some View {
         ZStack {
@@ -18,17 +20,13 @@ struct CircleView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header
                 headerSection
                 
-                // Circle counter
                 CircleCounterBadge(current: appState.circleCount, max: appState.circleLimit)
                     .padding(.top, 16)
                 
-                // Friends list
                 friendsList
                 
-                // Invite button
                 if appState.canAddFriend {
                     inviteSection
                 }
@@ -38,14 +36,12 @@ struct CircleView: View {
         .gesture(
             DragGesture(minimumDistance: 30)
                 .onChanged { value in
-                    // Swipe vers la gauche uniquement (CircleView est à GAUCHE de Gate)
                     if value.translation.width < 0 {
                         dragOffset = value.translation.width * 0.4
                     }
                 }
                 .onEnded { value in
                     if value.translation.width < -80 {
-                        // Swipe left → retour Gate
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             appState.navigate(to: .gate)
                         }
@@ -58,6 +54,23 @@ struct CircleView: View {
         .sheet(isPresented: $showInviteSheet) {
             inviteSheet
         }
+        .confirmationDialog(
+            "Supprimer \(selectedFriend?.firstName ?? "") de ton cercle ?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Supprimer", role: .destructive) {
+                if let friend = selectedFriend {
+                    withAnimation {
+                        appState.removeFriend(friend)
+                    }
+                }
+                selectedFriend = nil
+            }
+            Button("Annuler", role: .cancel) {
+                selectedFriend = nil
+            }
+        }
     }
     
     // MARK: - Header
@@ -69,7 +82,6 @@ struct CircleView: View {
             
             Spacer()
             
-            // Swipe hint vers Gate (à droite)
             HStack(spacing: 4) {
                 Text("Portail")
                     .font(.funnelLight(14))
@@ -89,11 +101,14 @@ struct CircleView: View {
     
     // MARK: - Friends List
     private var friendsList: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 0) {
                 ForEach(appState.circle) { friend in
-                    FriendRow(user: friend)
-                        .padding(.horizontal, 20)
+                    FriendRowWithDelete(user: friend) {
+                        selectedFriend = friend
+                        showDeleteConfirmation = true
+                    }
+                    .padding(.horizontal, 20)
                     
                     Divider()
                         .background(Color.tymerDarkGray)
@@ -125,7 +140,6 @@ struct CircleView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 32) {
-                // Handle
                 Capsule()
                     .fill(Color.tymerDarkGray)
                     .frame(width: 40, height: 4)
@@ -147,7 +161,6 @@ struct CircleView: View {
                         .foregroundColor(.tymerGray)
                         .multilineTextAlignment(.center)
                     
-                    // Fake invite link
                     HStack {
                         Text("tymer.app/invite/abc123")
                             .font(.funnelLight(14))
@@ -176,6 +189,61 @@ struct CircleView: View {
             }
         }
         .presentationDetents([.medium])
+    }
+}
+
+// MARK: - Friend Row with Delete
+struct FriendRowWithDelete: View {
+    let user: User
+    let onDelete: () -> Void
+    
+    @State private var showDeleteButton = false
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            FriendAvatar(user, size: 50)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(user.firstName)
+                    .font(.funnelSemiBold(16))
+                    .foregroundColor(.tymerWhite)
+                
+                Text("Dans le cercle")
+                    .font(.funnelLight(12))
+                    .foregroundColor(.tymerGray)
+            }
+            
+            Spacer()
+            
+            if showDeleteButton {
+                Button(action: onDelete) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.red)
+                        .padding(8)
+                        .background(Color.red.opacity(0.2))
+                        .clipShape(Circle())
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .onLongPressGesture(minimumDuration: 0.5) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                showDeleteButton.toggle()
+            }
+            
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+        }
+        .onTapGesture {
+            if showDeleteButton {
+                withAnimation {
+                    showDeleteButton = false
+                }
+            }
+        }
     }
 }
 

@@ -37,13 +37,6 @@ struct ContentView: View {
                     GateView()
                         .transition(.opacity)
                     
-                case .feed:
-                    FeedView()
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .bottom).combined(with: .opacity),
-                            removal: .opacity
-                        ))
-                    
                 case .capture:
                     CaptureView()
                         .transition(.asymmetric(
@@ -65,15 +58,9 @@ struct ContentView: View {
                             removal: .move(edge: .trailing)
                         ))
                     
-                case .messages:
-                    MessageView()
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .bottom).combined(with: .opacity),
-                            removal: .opacity
-                        ))
-                    
-                case .momentDetail:
-                    FeedView()
+                // Ces écrans ne sont plus utilisés, redirige vers gate
+                case .feed, .messages, .momentDetail:
+                    GateView()
                         .transition(.opacity)
                 }
             }
