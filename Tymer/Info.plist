@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>FunnelDisplay-Light.ttf</string>
+		<string>FunnelDisplay-SemiBold.ttf</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Tymer a besoin d&apos;accéder à ta caméra pour capturer ton moment du jour
+</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Tymer utilise le micro pour les réactions vocales de 3 secondes
+</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Tymer a besoin d&apos;accéder à tes photos pour partager ton moment
+</string>
+</dict>
+</plist>
