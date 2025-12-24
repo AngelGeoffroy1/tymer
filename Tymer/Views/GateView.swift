@@ -17,45 +17,83 @@ struct GateView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header fixe
+                // Header avec gesture de navigation
                 headerSection
+                    .gesture(
+                        DragGesture(minimumDistance: 30)
+                            .onChanged { value in
+                                dragOffset = value.translation.width * 0.5
+                            }
+                            .onEnded { value in
+                                handleSwipe(value.translation.width)
+                            }
+                    )
                 
                 // Status bar
                 windowStatusBar
                 
-                // Feed scrollable sans indicateur
+                // Feed scrollable
                 feedSection
+            }
+            
+            // Indicateurs de swipe sur les bords
+            HStack {
+                // Bord gauche - vers Circle
+                Color.clear
+                    .frame(width: 20)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onChanged { value in
+                                if value.translation.width > 0 {
+                                    dragOffset = value.translation.width * 0.5
+                                }
+                            }
+                            .onEnded { value in
+                                handleSwipe(value.translation.width)
+                            }
+                    )
+                
+                Spacer()
+                
+                // Bord droit - vers Digest
+                Color.clear
+                    .frame(width: 20)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onChanged { value in
+                                if value.translation.width < 0 {
+                                    dragOffset = value.translation.width * 0.5
+                                }
+                            }
+                            .onEnded { value in
+                                handleSwipe(value.translation.width)
+                            }
+                    )
             }
         }
         .offset(x: dragOffset)
-        .gesture(
-            DragGesture(minimumDistance: 50)
-                .onChanged { value in
-                    dragOffset = value.translation.width * 0.3
-                }
-                .onEnded { value in
-                    if value.translation.width < -80 {
-                        // Swipe left → Digest
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            appState.navigate(to: .digest)
-                        }
-                    } else if value.translation.width > 80 {
-                        // Swipe right → Circle
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            appState.navigate(to: .circle)
-                        }
-                    }
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        dragOffset = 0
-                    }
-                }
-        )
+    }
+    
+    private func handleSwipe(_ translation: CGFloat) {
+        if translation < -60 {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                appState.navigate(to: .digest)
+            }
+        } else if translation > 60 {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                appState.navigate(to: .circle)
+            }
+        }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            dragOffset = 0
+        }
     }
     
     // MARK: - Header
     private var headerSection: some View {
         HStack {
-            // Cercle (swipe right)
             Button(action: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     appState.navigate(to: .circle)
@@ -72,14 +110,12 @@ struct GateView: View {
             
             Spacer()
             
-            // Logo central
             Text("Tymer")
                 .font(.funnelSemiBold(24))
                 .foregroundColor(.tymerWhite)
             
             Spacer()
             
-            // Digest (swipe left)
             Button(action: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     appState.navigate(to: .digest)
@@ -97,6 +133,7 @@ struct GateView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 12)
+        .background(Color.tymerBlack) // Pour capter les touches
     }
     
     // MARK: - Window Status Bar
@@ -133,21 +170,17 @@ struct GateView: View {
     private var feedSection: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 16) {
-                // Ma capture du jour
                 myCaptureCard
                 
-                // Séparateur
                 if !appState.moments.isEmpty {
                     HStack {
                         Rectangle()
                             .fill(Color.tymerDarkGray)
                             .frame(height: 1)
-                        
                         Text("Cercle")
                             .font(.funnelLight(11))
                             .foregroundColor(.tymerGray)
                             .padding(.horizontal, 8)
-                        
                         Rectangle()
                             .fill(Color.tymerDarkGray)
                             .frame(height: 1)
@@ -155,7 +188,6 @@ struct GateView: View {
                     .padding(.horizontal, 16)
                 }
                 
-                // Posts des amis
                 ForEach(appState.moments) { moment in
                     PostCard(
                         moment: moment,
@@ -183,30 +215,23 @@ struct GateView: View {
             appState.navigate(to: .capture)
         }) {
             HStack(spacing: 16) {
-                // Icône caméra
                 ZStack {
                     Circle()
                         .stroke(Color.tymerWhite.opacity(0.3), lineWidth: 1.5)
                         .frame(width: 50, height: 50)
-                    
                     Image(systemName: "camera.fill")
                         .font(.system(size: 18))
                         .foregroundColor(.tymerWhite)
                 }
-                
-                // Texte
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Capturer mon moment")
                         .font(.funnelSemiBold(14))
                         .foregroundColor(.tymerWhite)
-                    
                     Text("Une seule photo par jour")
                         .font(.funnelLight(12))
                         .foregroundColor(.tymerGray)
                 }
-                
                 Spacer()
-                
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14))
                     .foregroundColor(.tymerDarkGray)
@@ -222,7 +247,7 @@ struct GateView: View {
     }
 }
 
-// MARK: - Post Card Component (Style BeReal)
+// MARK: - Post Card Component
 struct PostCard: View {
     let moment: Moment
     let isBlurred: Bool
@@ -232,14 +257,15 @@ struct PostCard: View {
     @State private var showReactionSheet = false
     @State private var reactionText = ""
     @State private var isRecordingVoice = false
-    @State private var recordingStartTime: Date?
+    @State private var recordingTimer: Timer?
+    @State private var recordingDuration: Double = 0
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             postHeader
             photoSection
             
-            if !isBlurred {
+            if !isBlurred && !isMyPost {
                 actionsSection
             }
             
@@ -254,28 +280,23 @@ struct PostCard: View {
         }
     }
     
-    // MARK: - Post Header
     private var postHeader: some View {
         HStack(spacing: 10) {
             FriendAvatar(moment.author, size: 36)
-            
             VStack(alignment: .leading, spacing: 2) {
                 Text(isMyPost ? "Mon moment" : moment.author.firstName)
                     .font(.funnelSemiBold(14))
                     .foregroundColor(.tymerWhite)
-                
                 Text(moment.relativeTimeString)
                     .font(.funnelLight(12))
                     .foregroundColor(.tymerGray)
             }
-            
             Spacer()
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 12)
     }
     
-    // MARK: - Photo Section
     private var photoSection: some View {
         ZStack {
             if let imageName = moment.imageName, let uiImage = PhotoLoader.loadImage(named: imageName) {
@@ -299,11 +320,9 @@ struct PostCard: View {
                     Image(systemName: "eye.slash.fill")
                         .font(.system(size: 28))
                         .foregroundColor(.tymerWhite)
-                    
                     Text("Visible pendant la fenêtre")
                         .font(.funnelSemiBold(13))
                         .foregroundColor(.tymerWhite)
-                    
                     Text("8h-9h • 19h-20h")
                         .font(.funnelLight(11))
                         .foregroundColor(.tymerGray)
@@ -318,44 +337,40 @@ struct PostCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
     
-    // MARK: - Actions Section
     private var actionsSection: some View {
-        HStack(spacing: 16) {
-            // Réaction vocale (long press)
-            Button(action: {}) {
+        HStack(spacing: 12) {
+            // Bouton vocal - tap pour start/stop
+            Button {
+                if isRecordingVoice {
+                    stopRecording()
+                } else {
+                    startRecording()
+                }
+            } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: isRecordingVoice ? "stop.circle.fill" : "mic.fill")
+                    Image(systemName: isRecordingVoice ? "stop.fill" : "mic.fill")
                         .font(.system(size: 14))
-                    Text(isRecordingVoice ? "Enregistre..." : "Réagir")
-                        .font(.funnelLight(12))
+                    if isRecordingVoice {
+                        Text(String(format: "%.1fs", recordingDuration))
+                            .font(.funnelLight(12))
+                    } else {
+                        Text("Vocal")
+                            .font(.funnelLight(12))
+                    }
                 }
                 .foregroundColor(isRecordingVoice ? .red : .tymerWhite)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
                 .background(
                     Capsule()
-                        .fill(isRecordingVoice ? Color.red.opacity(0.2) : Color.tymerDarkGray)
+                        .fill(isRecordingVoice ? Color.red.opacity(0.3) : Color.tymerDarkGray)
                 )
             }
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.3)
-                    .onEnded { _ in
-                        startVoiceReaction()
-                    }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in
-                        if isRecordingVoice {
-                            stopVoiceReaction()
-                        }
-                    }
-            )
             
-            // Message texte
-            Button(action: {
+            // Bouton texte
+            Button {
                 showReactionSheet = true
-            }) {
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 14))
@@ -363,15 +378,20 @@ struct PostCard: View {
                         .font(.funnelLight(12))
                 }
                 .foregroundColor(.tymerGray)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    Capsule()
+                        .stroke(Color.tymerDarkGray, lineWidth: 1)
+                )
             }
             
             Spacer()
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .padding(.horizontal, 4)
     }
     
-    // MARK: - Reactions Preview
     private var reactionsPreview: some View {
         HStack(spacing: 8) {
             HStack(spacing: -8) {
@@ -383,18 +403,15 @@ struct PostCard: View {
                         )
                 }
             }
-            
             Text("\(moment.reactions.count) réaction\(moment.reactions.count > 1 ? "s" : "")")
                 .font(.funnelLight(11))
                 .foregroundColor(.tymerGray)
-            
             Spacer()
         }
         .padding(.horizontal, 4)
         .padding(.bottom, 8)
     }
     
-    // MARK: - Reaction Sheet
     private var reactionSheet: some View {
         VStack(spacing: 20) {
             Capsule()
@@ -402,11 +419,11 @@ struct PostCard: View {
                 .frame(width: 36, height: 4)
                 .padding(.top, 12)
             
-            Text("Envoyer un message")
+            Text("Message à \(moment.author.firstName)")
                 .font(.funnelSemiBold(16))
                 .foregroundColor(.tymerWhite)
             
-            HStack {
+            HStack(spacing: 12) {
                 TextField("", text: $reactionText, prompt: Text("Ton message...").foregroundColor(.tymerGray))
                     .font(.funnelLight(14))
                     .foregroundColor(.tymerWhite)
@@ -415,8 +432,13 @@ struct PostCard: View {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color.tymerDarkGray.opacity(0.5))
                     )
+                    .onSubmit {
+                        sendTextReaction()
+                    }
                 
-                Button(action: sendTextReaction) {
+                Button {
+                    sendTextReaction()
+                } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 32))
                         .foregroundColor(reactionText.isEmpty ? .tymerDarkGray : .tymerWhite)
@@ -429,45 +451,53 @@ struct PostCard: View {
         }
         .frame(maxWidth: .infinity)
         .background(Color.tymerBlack)
-        .presentationDetents([.height(180)])
+        .presentationDetents([.height(200)])
         .presentationDragIndicator(.hidden)
     }
     
-    // MARK: - Voice Reaction
-    private func startVoiceReaction() {
+    // MARK: - Recording
+    private func startRecording() {
         isRecordingVoice = true
-        recordingStartTime = Date()
+        recordingDuration = 0
+        
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         appState.startVoiceRecording()
+        
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            recordingDuration += 0.1
+            if recordingDuration >= 3 {
+                stopRecording()
+            }
+        }
     }
     
-    private func stopVoiceReaction() {
+    private func stopRecording() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        
         guard isRecordingVoice else { return }
         isRecordingVoice = false
+        
         let duration = appState.stopVoiceRecording()
-        if duration > 0.5 {
-            appState.addVoiceReaction(to: moment, duration: duration)
+        
+        if recordingDuration > 0.3 {
+            appState.addVoiceReaction(to: moment, duration: max(duration, recordingDuration))
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
+        
+        recordingDuration = 0
     }
     
     private func sendTextReaction() {
         guard !reactionText.isEmpty else { return }
         appState.addTextReaction(to: moment, text: reactionText)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         reactionText = ""
         showReactionSheet = false
     }
 }
 
-#Preview("Window Open") {
-    let appState = AppState()
-    appState.isWindowOpen = true
-    return GateView()
-        .environment(appState)
-}
-
-#Preview("Window Closed") {
-    let appState = AppState()
-    appState.isWindowOpen = false
-    appState.debugModeEnabled = false
-    return GateView()
-        .environment(appState)
+#Preview {
+    GateView()
+        .environment(AppState())
 }
