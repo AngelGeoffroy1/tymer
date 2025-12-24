@@ -7,8 +7,31 @@
 
 import SwiftUI
 
+// MARK: - Scroll Offset Detector (iOS 17 compatible)
+private struct ScrollOffsetModifier: ViewModifier {
+    let onScroll: (_ offset: CGFloat, _ delta: CGFloat) -> Void
+    @State private var lastOffset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onChange(of: geo.frame(in: .global).minY) { oldValue, newValue in
+                            let delta = newValue - oldValue
+                            onScroll(newValue, delta)
+                        }
+                }
+            )
+    }
+}
+
 struct GateView: View {
     @Environment(AppState.self) private var appState
+
+    @State private var headerVisible: Bool = true
+    @State private var scrollStartY: CGFloat = 0
+    @State private var hasScrolledEnough: Bool = false
 
     var body: some View {
         ZStack {
@@ -16,8 +39,16 @@ struct GateView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                headerSection
-                windowStatusBar
+                // Header avec animation de disparition
+                VStack(spacing: 0) {
+                    headerSection
+                    windowStatusBar
+                }
+                .frame(height: headerVisible ? nil : 0, alignment: .top)
+                .clipped()
+                .opacity(headerVisible ? 1 : 0)
+                .animation(.easeInOut(duration: 0.2), value: headerVisible)
+
                 feedSection
             }
         }
@@ -75,15 +106,21 @@ struct GateView: View {
                 .fill(appState.isWindowOpen ? Color.green : Color.tymerDarkGray)
                 .frame(width: 6, height: 6)
             
-            if appState.isWindowOpen {
-                Text("Fenêtre ouverte")
-                    .font(.funnelSemiBold(11))
-                    .foregroundColor(.tymerWhite)
-            } else {
-                Text("Fermée")
-                    .font(.funnelSemiBold(11))
-                    .foregroundColor(.tymerGray)
+            // TODO: Remove this toggle in production - Test toggle to simulate window open/close
+            Button {
+                appState.isWindowOpen.toggle()
+            } label: {
+                if appState.isWindowOpen {
+                    Text("Fenêtre ouverte")
+                        .font(.funnelSemiBold(11))
+                        .foregroundColor(.tymerWhite)
+                } else {
+                    Text("Fermée")
+                        .font(.funnelSemiBold(11))
+                        .foregroundColor(.tymerGray)
+                }
             }
+            .buttonStyle(PlainButtonStyle())
             
             Text("•")
                 .foregroundColor(.tymerDarkGray)
@@ -101,9 +138,16 @@ struct GateView: View {
     // MARK: - Feed Section
     private var feedSection: some View {
         ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 16) {
+            VStack(spacing: 16) {
+                // Tracker pour détecter le scroll
+                Color.clear
+                    .frame(height: 1)
+                    .modifier(ScrollOffsetModifier { offset, delta in
+                        handleScrollDelta(offset: offset, delta: delta)
+                    })
+
                 myCaptureCard
-                
+
                 if !appState.moments.isEmpty {
                     HStack {
                         Rectangle()
@@ -119,7 +163,7 @@ struct GateView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                
+
                 ForEach(appState.moments) { moment in
                     PostCard(
                         moment: moment,
@@ -128,6 +172,42 @@ struct GateView: View {
                 }
             }
             .padding(.bottom, 100)
+        }
+    }
+
+    // MARK: - Scroll Handling
+    private func handleScrollDelta(offset: CGFloat, delta: CGFloat) {
+        // Ignorer les micro-mouvements
+        guard abs(delta) > 3 else { return }
+
+        // Scroll vers le bas (delta négatif car offset diminue) -> cacher
+        if delta < -8 && headerVisible && hasScrolledEnough {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                headerVisible = false
+            }
+        }
+        // Scroll vers le haut (delta positif) -> montrer
+        else if delta > 8 && !headerVisible {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                headerVisible = true
+            }
+        }
+
+        // Tracker si on a assez scrollé pour pouvoir cacher le header
+        if scrollStartY == 0 {
+            scrollStartY = offset
+        }
+        hasScrolledEnough = abs(offset - scrollStartY) > 100
+
+        // Reset quand on revient en haut
+        if offset > scrollStartY - 20 {
+            scrollStartY = offset
+            hasScrolledEnough = false
+            if !headerVisible {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    headerVisible = true
+                }
+            }
         }
     }
     
