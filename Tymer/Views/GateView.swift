@@ -15,35 +15,30 @@ struct GateView: View {
         ZStack {
             Color.tymerBlack
                 .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
-                // Header avec gesture de navigation
                 headerSection
-                    .gesture(
-                        DragGesture(minimumDistance: 30)
-                            .onChanged { value in
-                                dragOffset = value.translation.width * 0.5
-                            }
-                            .onEnded { value in
-                                handleSwipe(value.translation.width)
-                            }
-                    )
-                
-                // Status bar
                 windowStatusBar
-                
-                // Feed scrollable
                 feedSection
             }
         }
         .offset(x: dragOffset)
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 30)
                 .onChanged { value in
-                    dragOffset = value.translation.width * 0.3
+                    // Seulement pour les swipes horizontaux
+                    if abs(value.translation.width) > abs(value.translation.height) {
+                        dragOffset = value.translation.width * 0.5
+                    }
                 }
                 .onEnded { value in
-                    handleSwipe(value.translation.width)
+                    // Seulement si le swipe était horizontal
+                    if abs(value.translation.width) > abs(value.translation.height) {
+                        handleSwipe(value.translation.width)
+                    }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        dragOffset = 0
+                    }
                 }
         )
     }
@@ -230,6 +225,7 @@ struct PostCard: View {
     @State private var reactionText = ""
     @State private var isRecordingVoice = false
     @State private var recordingTimer: Timer?
+    @State private var showExpandedReactions = false
     @State private var recordingDuration: Double = 0
     
     var body: some View {
@@ -338,7 +334,8 @@ struct PostCard: View {
                         .fill(isRecordingVoice ? Color.red.opacity(0.3) : Color.tymerDarkGray)
                 )
             }
-            
+            .buttonStyle(PlainButtonStyle())
+
             // Bouton texte
             Button {
                 showReactionSheet = true
@@ -357,7 +354,8 @@ struct PostCard: View {
                         .stroke(Color.tymerDarkGray, lineWidth: 1)
                 )
             }
-            
+            .buttonStyle(PlainButtonStyle())
+
             Spacer()
         }
         .padding(.vertical, 12)
@@ -365,20 +363,53 @@ struct PostCard: View {
     }
     
     private var reactionsPreview: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: -8) {
-                ForEach(moment.reactions.prefix(3)) { reaction in
-                    FriendAvatar(reaction.author, size: 22)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.tymerBlack, lineWidth: 2)
-                        )
+        VStack(alignment: .leading, spacing: 8) {
+            // Header cliquable pour expand/collapse
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showExpandedReactions.toggle()
                 }
+            } label: {
+                HStack(spacing: 8) {
+                    if !showExpandedReactions {
+                        HStack(spacing: -8) {
+                            ForEach(moment.reactions.prefix(3)) { reaction in
+                                FriendAvatar(reaction.author, size: 22)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.tymerBlack, lineWidth: 2)
+                                    )
+                            }
+                        }
+                    }
+
+                    Text(showExpandedReactions ? "Moins" : "\(moment.reactions.count) réaction\(moment.reactions.count > 1 ? "s" : "")")
+                        .font(.funnelLight(11))
+                        .foregroundColor(.tymerGray)
+
+                    Image(systemName: showExpandedReactions ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10))
+                        .foregroundColor(.tymerGray)
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
-            Text("\(moment.reactions.count) réaction\(moment.reactions.count > 1 ? "s" : "")")
-                .font(.funnelLight(11))
-                .foregroundColor(.tymerGray)
-            Spacer()
+            .buttonStyle(PlainButtonStyle())
+            
+            // Liste déroulée des réactions
+            if showExpandedReactions {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(moment.reactions) { reaction in
+                        ReactionRow(reaction: reaction)
+                    }
+                }
+                .padding(.top, 4)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity
+                ))
+            }
         }
         .padding(.horizontal, 4)
         .padding(.bottom, 8)
@@ -466,6 +497,65 @@ struct PostCard: View {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         reactionText = ""
         showReactionSheet = false
+    }
+}
+
+// MARK: - Reaction Row Component
+struct ReactionRow: View {
+    let reaction: Reaction
+    
+    var body: some View {
+        HStack(spacing: 10) {
+            FriendAvatar(reaction.author, size: 28)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reaction.author.firstName)
+                    .font(.funnelSemiBold(12))
+                    .foregroundColor(.tymerWhite)
+                
+                reactionContent
+            }
+            
+            Spacer()
+            
+            Text(relativeTime)
+                .font(.funnelLight(10))
+                .foregroundColor(.tymerDarkGray)
+        }
+        .padding(.vertical, 4)
+    }
+    
+    @ViewBuilder
+    private var reactionContent: some View {
+        switch reaction.type {
+        case .voice(let duration):
+            HStack(spacing: 6) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 12))
+                    .foregroundColor(.tymerGray)
+                Text("\(String(format: "%.0f", duration))s")
+                    .font(.funnelLight(11))
+                    .foregroundColor(.tymerGray)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color.tymerDarkGray.opacity(0.5))
+            )
+            
+        case .text(let message):
+            Text(message)
+                .font(.funnelLight(12))
+                .foregroundColor(.tymerGray)
+        }
+    }
+    
+    private var relativeTime: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.locale = Locale(identifier: "fr_FR")
+        return formatter.localizedString(for: reaction.createdAt, relativeTo: Date())
     }
 }
 
