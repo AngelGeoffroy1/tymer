@@ -9,8 +9,7 @@ import SwiftUI
 
 struct GateView: View {
     @Environment(AppState.self) private var appState
-    @State private var dragOffset: CGFloat = 0
-    
+
     var body: some View {
         ZStack {
             Color.tymerBlack
@@ -22,42 +21,8 @@ struct GateView: View {
                 feedSection
             }
         }
-        .offset(x: dragOffset)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 30)
-                .onChanged { value in
-                    // Seulement pour les swipes horizontaux
-                    if abs(value.translation.width) > abs(value.translation.height) {
-                        dragOffset = value.translation.width * 0.5
-                    }
-                }
-                .onEnded { value in
-                    // Seulement si le swipe était horizontal
-                    if abs(value.translation.width) > abs(value.translation.height) {
-                        handleSwipe(value.translation.width)
-                    }
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        dragOffset = 0
-                    }
-                }
-        )
     }
-    
-    private func handleSwipe(_ translation: CGFloat) {
-        if translation < -60 {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                appState.navigate(to: .digest)
-            }
-        } else if translation > 60 {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                appState.navigate(to: .circle)
-            }
-        }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            dragOffset = 0
-        }
-    }
-    
+
     // MARK: - Header
     private var headerSection: some View {
         HStack {
@@ -274,6 +239,7 @@ struct PostCard: View {
                     .frame(height: 400)
                     .clipped()
                     .blur(radius: isBlurred ? 30 : 0)
+                    .allowsHitTesting(false) // L'image ne bloque pas les touches
             } else {
                 MockPhotoPattern(
                     baseColor: moment.placeholderColor,
@@ -281,8 +247,9 @@ struct PostCard: View {
                 )
                 .frame(height: 400)
                 .blur(radius: isBlurred ? 30 : 0)
+                .allowsHitTesting(false) // Le pattern ne bloque pas les touches
             }
-            
+
             if isBlurred {
                 VStack(spacing: 12) {
                     Image(systemName: "eye.slash.fill")
@@ -300,15 +267,19 @@ struct PostCard: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color.black.opacity(0.5))
                 )
+                .allowsHitTesting(false)
             }
         }
+        .frame(height: 400)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .contentShape(RoundedRectangle(cornerRadius: 16)) // Zone de hit limitée au rectangle visible
     }
     
     private var actionsSection: some View {
         HStack(spacing: 12) {
             // Bouton vocal - tap pour start/stop
             Button {
+                print("🎤 Bouton Vocal tappé!")
                 if isRecordingVoice {
                     stopRecording()
                 } else {
@@ -338,6 +309,7 @@ struct PostCard: View {
 
             // Bouton texte
             Button {
+                print("💬 Bouton Message tappé!")
                 showReactionSheet = true
             } label: {
                 HStack(spacing: 6) {
@@ -366,6 +338,7 @@ struct PostCard: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header cliquable pour expand/collapse
             Button {
+                print("📋 Bouton Réactions tappé!")
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     showExpandedReactions.toggle()
                 }
