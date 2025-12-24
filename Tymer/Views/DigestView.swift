@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DigestView: View {
     @Environment(AppState.self) private var appState
+    @State private var dragOffset: CGFloat = 0
     
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
     
@@ -33,13 +34,44 @@ struct DigestView: View {
                 footerSection
             }
         }
+        .offset(x: dragOffset)
+        .gesture(
+            DragGesture(minimumDistance: 30)
+                .onChanged { value in
+                    // Swipe vers la droite uniquement (DigestView est à DROITE de Gate)
+                    if value.translation.width > 0 {
+                        dragOffset = value.translation.width * 0.4
+                    }
+                }
+                .onEnded { value in
+                    if value.translation.width > 80 {
+                        // Swipe right → retour Gate
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.navigate(to: .gate)
+                        }
+                    }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        dragOffset = 0
+                    }
+                }
+        )
     }
     
     // MARK: - Header
     private var headerSection: some View {
         HStack {
-            TymerBackButton {
-                appState.navigate(to: .gate)
+            // Swipe hint vers Gate (à gauche)
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14))
+                Text("Portail")
+                    .font(.funnelLight(14))
+            }
+            .foregroundColor(.tymerGray)
+            .onTapGesture {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    appState.navigate(to: .gate)
+                }
             }
             
             Spacer()
@@ -47,14 +79,9 @@ struct DigestView: View {
             Text("Mon Digest")
                 .font(.tymerSubheadline)
                 .foregroundColor(.tymerWhite)
-            
-            Spacer()
-            
-            // Spacer pour équilibrer
-            Color.clear.frame(width: 60)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.top, 16)
     }
     
     // MARK: - Week Info

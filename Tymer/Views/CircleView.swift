@@ -10,6 +10,7 @@ import SwiftUI
 struct CircleView: View {
     @Environment(AppState.self) private var appState
     @State private var showInviteSheet = false
+    @State private var dragOffset: CGFloat = 0
     
     var body: some View {
         ZStack {
@@ -33,6 +34,27 @@ struct CircleView: View {
                 }
             }
         }
+        .offset(x: dragOffset)
+        .gesture(
+            DragGesture(minimumDistance: 30)
+                .onChanged { value in
+                    // Swipe vers la gauche uniquement (CircleView est à GAUCHE de Gate)
+                    if value.translation.width < 0 {
+                        dragOffset = value.translation.width * 0.4
+                    }
+                }
+                .onEnded { value in
+                    if value.translation.width < -80 {
+                        // Swipe left → retour Gate
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.navigate(to: .gate)
+                        }
+                    }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        dragOffset = 0
+                    }
+                }
+        )
         .sheet(isPresented: $showInviteSheet) {
             inviteSheet
         }
@@ -41,23 +63,28 @@ struct CircleView: View {
     // MARK: - Header
     private var headerSection: some View {
         HStack {
-            TymerBackButton {
-                appState.navigate(to: .gate)
-            }
-            
-            Spacer()
-            
             Text("Mon Cercle")
                 .font(.tymerSubheadline)
                 .foregroundColor(.tymerWhite)
             
             Spacer()
             
-            // Spacer pour équilibrer
-            Color.clear.frame(width: 60)
+            // Swipe hint vers Gate (à droite)
+            HStack(spacing: 4) {
+                Text("Portail")
+                    .font(.funnelLight(14))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+            }
+            .foregroundColor(.tymerGray)
+            .onTapGesture {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    appState.navigate(to: .gate)
+                }
+            }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.top, 16)
     }
     
     // MARK: - Friends List
@@ -142,7 +169,6 @@ struct CircleView: View {
                 Spacer()
                 
                 TymerButton("Copier le lien", style: .primary) {
-                    // Copier le lien (simulé)
                     UIPasteboard.general.string = "tymer.app/invite/abc123"
                     showInviteSheet = false
                 }

@@ -7,6 +7,118 @@
 
 import SwiftUI
 
+// MARK: - Mock Photo Patterns
+struct MockPhotoPattern: View {
+    let baseColor: Color
+    let patternType: Int
+    
+    var body: some View {
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                colors: [baseColor.opacity(0.6), baseColor.opacity(0.3)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            
+            // Pattern overlay based on type
+            switch patternType % 4 {
+            case 0:
+                // Circles pattern
+                circlesPattern
+            case 1:
+                // Waves pattern
+                wavesPattern
+            case 2:
+                // Diagonal lines
+                diagonalPattern
+            default:
+                // Dots pattern
+                dotsPattern
+            }
+        }
+    }
+    
+    private var circlesPattern: some View {
+        GeometryReader { geo in
+            ZStack {
+                Circle()
+                    .fill(baseColor.opacity(0.2))
+                    .frame(width: geo.size.width * 0.6)
+                    .offset(x: geo.size.width * 0.3, y: -geo.size.height * 0.2)
+                
+                Circle()
+                    .fill(baseColor.opacity(0.15))
+                    .frame(width: geo.size.width * 0.4)
+                    .offset(x: -geo.size.width * 0.2, y: geo.size.height * 0.3)
+                
+                Circle()
+                    .stroke(baseColor.opacity(0.3), lineWidth: 2)
+                    .frame(width: geo.size.width * 0.5)
+                    .offset(x: geo.size.width * 0.1, y: geo.size.height * 0.1)
+            }
+        }
+    }
+    
+    private var wavesPattern: some View {
+        GeometryReader { geo in
+            Path { path in
+                let width = geo.size.width
+                let height = geo.size.height
+                let waveHeight: CGFloat = 30
+                
+                for i in 0..<5 {
+                    let y = height * CGFloat(i + 1) / 6
+                    path.move(to: CGPoint(x: 0, y: y))
+                    
+                    for x in stride(from: 0, to: width, by: 20) {
+                        let relativeX = x / width
+                        let offsetY = sin(relativeX * .pi * 2) * waveHeight
+                        path.addLine(to: CGPoint(x: x, y: y + offsetY))
+                    }
+                }
+            }
+            .stroke(baseColor.opacity(0.2), lineWidth: 2)
+        }
+    }
+    
+    private var diagonalPattern: some View {
+        GeometryReader { geo in
+            Path { path in
+                let spacing: CGFloat = 40
+                let count = Int((geo.size.width + geo.size.height) / spacing)
+                
+                for i in 0..<count {
+                    let offset = CGFloat(i) * spacing
+                    path.move(to: CGPoint(x: offset, y: 0))
+                    path.addLine(to: CGPoint(x: 0, y: offset))
+                }
+            }
+            .stroke(baseColor.opacity(0.15), lineWidth: 1)
+        }
+    }
+    
+    private var dotsPattern: some View {
+        GeometryReader { geo in
+            let cols = 8
+            let rows = 12
+            let dotSize: CGFloat = 8
+            
+            ForEach(0..<rows, id: \.self) { row in
+                ForEach(0..<cols, id: \.self) { col in
+                    Circle()
+                        .fill(baseColor.opacity(0.2))
+                        .frame(width: dotSize, height: dotSize)
+                        .position(
+                            x: geo.size.width * CGFloat(col + 1) / CGFloat(cols + 1),
+                            y: geo.size.height * CGFloat(row + 1) / CGFloat(rows + 1)
+                        )
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Moment Card Component (Full Screen)
 struct MomentCard: View {
     let moment: Moment
@@ -16,10 +128,12 @@ struct MomentCard: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Photo placeholder (couleur en attendant vraie photo)
-                Rectangle()
-                    .fill(moment.placeholderColor)
-                    .ignoresSafeArea()
+                // Photo mock avec pattern
+                MockPhotoPattern(
+                    baseColor: moment.placeholderColor,
+                    patternType: abs(moment.id.hashValue) % 4
+                )
+                .ignoresSafeArea()
                 
                 // Overlay gradient pour lisibilité
                 VStack {
@@ -84,20 +198,32 @@ struct MomentThumbnail: View {
     
     var body: some View {
         ZStack {
+            // Pattern background
             RoundedRectangle(cornerRadius: 12)
-                .fill(moment.placeholderColor)
+                .fill(
+                    LinearGradient(
+                        colors: [moment.placeholderColor.opacity(0.6), moment.placeholderColor.opacity(0.3)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .frame(width: size, height: size)
             
             // Date pour le digest
             VStack {
                 Spacer()
                 Text(dayString)
-                    .font(.funnelLight(12))
+                    .font(.funnelSemiBold(12))
                     .foregroundColor(.tymerWhite)
-                    .padding(6)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.3))
+                    .clipShape(Capsule())
+                    .padding(8)
             }
         }
         .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
     private var dayString: String {
@@ -111,6 +237,8 @@ struct MomentThumbnail: View {
 // MARK: - Feed End Card
 struct FeedEndCard: View {
     var onDismiss: () -> Void
+    @State private var checkmarkScale: CGFloat = 0.5
+    @State private var checkmarkOpacity: Double = 0
     
     var body: some View {
         VStack(spacing: 32) {
@@ -125,6 +253,8 @@ struct FeedEndCard: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 48, weight: .light))
                     .foregroundColor(.tymerWhite)
+                    .scaleEffect(checkmarkScale)
+                    .opacity(checkmarkOpacity)
             }
             
             VStack(spacing: 12) {
@@ -144,6 +274,12 @@ struct FeedEndCard: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tymerBackground()
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
+                checkmarkScale = 1.0
+                checkmarkOpacity = 1.0
+            }
+        }
     }
 }
 

@@ -15,7 +15,7 @@ struct ContentView: View {
             Color.tymerBlack
                 .ignoresSafeArea()
             
-            // Router principal
+            // Router principal avec animations fluides
             Group {
                 switch appState.currentScreen {
                 case .splash:
@@ -28,7 +28,10 @@ struct ContentView: View {
                     OnboardingView {
                         handleOnboardingComplete()
                     }
-                    .transition(.move(edge: .trailing))
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing),
+                        removal: .opacity
+                    ))
                     
                 case .gate:
                     GateView()
@@ -36,31 +39,45 @@ struct ContentView: View {
                     
                 case .feed:
                     FeedView()
-                        .transition(.move(edge: .bottom))
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                     
                 case .capture:
                     CaptureView()
-                        .transition(.move(edge: .bottom))
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                     
                 case .circle:
                     CircleView()
-                        .transition(.move(edge: .leading))
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading),
+                            removal: .move(edge: .leading)
+                        ))
                     
                 case .digest:
                     DigestView()
-                        .transition(.move(edge: .trailing))
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing),
+                            removal: .move(edge: .trailing)
+                        ))
                     
                 case .messages:
                     MessageView()
-                        .transition(.move(edge: .top))
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                     
                 case .momentDetail:
-                    // Pour une future implémentation détaillée
                     FeedView()
                         .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.3), value: appState.currentScreen)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: appState.currentScreen)
         }
     }
     

@@ -43,7 +43,6 @@ struct FeedView: View {
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.5)
                 .onEnded { _ in
-                    // Simuler une réaction vocale
                     triggerVoiceReaction()
                 }
         )
@@ -56,6 +55,23 @@ struct FeedView: View {
             MomentCard(moment: currentMoment)
                 .offset(y: dragOffset * 0.5)
                 .animation(.interactiveSpring(), value: dragOffset)
+            
+            // Zones de tap pour navigation
+            HStack(spacing: 0) {
+                // Zone gauche - photo précédente
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        goToPreviousMoment()
+                    }
+                
+                // Zone droite - photo suivante
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        goToNextMoment()
+                    }
+            }
             
             // Header overlay
             VStack {
@@ -92,7 +108,7 @@ struct FeedView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.top, 60)
     }
     
     // MARK: - Progress Indicator
@@ -129,7 +145,7 @@ struct FeedView: View {
     private func handleVerticalSwipe(_ value: DragGesture.Value) {
         let verticalMovement = value.translation.height
         
-        withAnimation(.spring()) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             dragOffset = 0
         }
         
@@ -145,23 +161,28 @@ struct FeedView: View {
     private func goToNextMoment() {
         if !appState.nextMoment() {
             // Fin du feed
-            withAnimation {
+            withAnimation(.easeInOut(duration: 0.3)) {
                 showEndCard = true
             }
+        } else {
+            // Haptic feedback
+            let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+            impactGenerator.impactOccurred()
         }
     }
     
     private func goToPreviousMoment() {
-        _ = appState.previousMoment()
+        if appState.previousMoment() {
+            // Haptic feedback
+            let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+            impactGenerator.impactOccurred()
+        }
     }
     
     // MARK: - Voice Reaction
     private func triggerVoiceReaction() {
-        // Haptic feedback
         let impactGenerator = UIImpactFeedbackGenerator(style: .medium)
         impactGenerator.impactOccurred()
-        
-        // Dans un vrai app, on démarrerait l'enregistrement ici
         print("🎤 Voice reaction started")
     }
 }
