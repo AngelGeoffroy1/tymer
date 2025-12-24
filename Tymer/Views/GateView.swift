@@ -35,45 +35,17 @@ struct GateView: View {
                 // Feed scrollable
                 feedSection
             }
-            
-            // Indicateurs de swipe sur les bords
-            HStack {
-                // Bord gauche - vers Circle
-                Color.clear
-                    .frame(width: 20)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 20)
-                            .onChanged { value in
-                                if value.translation.width > 0 {
-                                    dragOffset = value.translation.width * 0.5
-                                }
-                            }
-                            .onEnded { value in
-                                handleSwipe(value.translation.width)
-                            }
-                    )
-                
-                Spacer()
-                
-                // Bord droit - vers Digest
-                Color.clear
-                    .frame(width: 20)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 20)
-                            .onChanged { value in
-                                if value.translation.width < 0 {
-                                    dragOffset = value.translation.width * 0.5
-                                }
-                            }
-                            .onEnded { value in
-                                handleSwipe(value.translation.width)
-                            }
-                    )
-            }
         }
         .offset(x: dragOffset)
+        .gesture(
+            DragGesture(minimumDistance: 30)
+                .onChanged { value in
+                    dragOffset = value.translation.width * 0.3
+                }
+                .onEnded { value in
+                    handleSwipe(value.translation.width)
+                }
+        )
     }
     
     private func handleSwipe(_ translation: CGFloat) {
