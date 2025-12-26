@@ -270,7 +270,7 @@
 				INFOPLIST_FILE = Tymer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Tymer;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Tymer a besoin d'accéder à ta caméra pour capturer ton moment du jour\n";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Tymer à besoin de ta caméra pour capturer tes moments";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Tymer utilise le micro pour les réactions vocales de 3 secondes";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Tymer a besoin d'accéder à tes photos pour partager ton moment\n";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -321,7 +321,7 @@
 				INFOPLIST_FILE = Tymer/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Tymer;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Tymer a besoin d'accéder à ta caméra pour capturer ton moment du jour\n";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Tymer à besoin de ta caméra pour capturer tes moments";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Tymer utilise le micro pour les réactions vocales de 3 secondes";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Tymer a besoin d'accéder à tes photos pour partager ton moment\n";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;

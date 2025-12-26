@@ -9,14 +9,19 @@ import SwiftUI
 
 // MARK: - Photo Loader Helper
 struct PhotoLoader {
-    /// Charge une image depuis le dossier MockPhotos ou les Assets
+    /// Charge une image depuis le stockage local, les Assets ou le Bundle
     static func loadImage(named name: String) -> UIImage? {
-        // D'abord essayer les Assets
+        // D'abord essayer le stockage des moments capturés (images avec UUID)
+        if let capturedImage = ImageStorageManager.shared.loadImage(withId: name) {
+            return capturedImage
+        }
+
+        // Ensuite essayer les Assets
         if let image = UIImage(named: name) {
             return image
         }
-        
-        // Ensuite essayer le bundle avec différentes extensions
+
+        // Enfin essayer le bundle avec différentes extensions
         let extensions = ["JPG", "jpg", "PNG", "png", "jpeg", "JPEG"]
         for ext in extensions {
             if let path = Bundle.main.path(forResource: name, ofType: ext),
@@ -24,7 +29,7 @@ struct PhotoLoader {
                 return image
             }
         }
-        
+
         return nil
     }
 }

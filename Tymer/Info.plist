@@ -7,5 +7,11 @@
 		<string>FunnelDisplay-Light.ttf</string>
 		<string>FunnelDisplay-SemiBold.ttf</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Tymer a besoin d'accéder à ta caméra pour capturer ton moment quotidien</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Tymer a besoin d'accéder à ton micro pour enregistrer des réactions vocales</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Tymer a besoin d'accéder à ta photothèque pour sélectionner des photos</string>
 </dict>
 </plist>

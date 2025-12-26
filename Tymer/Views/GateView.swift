@@ -277,11 +277,21 @@ struct PostCard: View {
         VStack(alignment: .leading, spacing: 0) {
             postHeader
             photoSection
-            
-            if !isBlurred && !isMyPost {
+
+            // Description du moment
+            if let description = moment.description, !description.isEmpty, !isBlurred {
+                Text(description)
+                    .font(.funnelLight(14))
+                    .foregroundColor(.tymerWhite)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 12)
+            }
+
+            // Actions (pour tous les posts, y compris le mien)
+            if !isBlurred {
                 actionsSection
             }
-            
+
             if !moment.reactions.isEmpty && !isBlurred {
                 reactionsPreview
             }
@@ -474,8 +484,8 @@ struct PostCard: View {
                 .fill(Color.tymerDarkGray)
                 .frame(width: 36, height: 4)
                 .padding(.top, 12)
-            
-            Text("Message à \(moment.author.firstName)")
+
+            Text(isMyPost ? "Ajouter un commentaire" : "Message à \(moment.author.firstName)")
                 .font(.funnelSemiBold(16))
                 .foregroundColor(.tymerWhite)
             

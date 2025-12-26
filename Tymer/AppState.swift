@@ -216,7 +216,7 @@ final class AppState {
     }
     
     // MARK: - Post Actions
-    
+
     func postMoment(imageName: String? = nil, placeholderColor: Color = .tymerDarkGray) {
         let newMoment = Moment(
             author: currentUser,
@@ -224,38 +224,83 @@ final class AppState {
             placeholderColor: placeholderColor,
             capturedAt: Date()
         )
-        
+
         myTodayMoment = newMoment
         weeklyDigest.insert(newMoment, at: 0)
         hasPostedToday = true
-        
+
         // Sauvegarder la date du post
         UserDefaults.standard.set(Date(), forKey: StorageKey.lastPostDate)
         saveLocalData()
     }
+
+    /// Poste un moment avec une image capturée et une description optionnelle
+    func postMomentWithImage(_ image: UIImage, description: String? = nil) {
+        // Sauvegarder l'image et récupérer son ID
+        guard let imageId = ImageStorageManager.shared.saveImage(image) else {
+            print("Erreur: Impossible de sauvegarder l'image")
+            // Fallback: poster avec une couleur aléatoire
+            let colors: [Color] = [.red, .blue, .green, .orange, .purple, .pink, .cyan]
+            postMoment(placeholderColor: colors.randomElement() ?? .tymerDarkGray)
+            return
+        }
+
+        // Nettoyer la description (nil si vide)
+        let cleanDescription = description?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalDescription = (cleanDescription?.isEmpty ?? true) ? nil : cleanDescription
+
+        // Créer le moment avec l'ID de l'image
+        let newMoment = Moment(
+            author: currentUser,
+            imageName: imageId,
+            placeholderColor: .tymerDarkGray,
+            capturedAt: Date(),
+            description: finalDescription
+        )
+
+        myTodayMoment = newMoment
+        weeklyDigest.insert(newMoment, at: 0)
+        hasPostedToday = true
+
+        // Sauvegarder la date du post
+        UserDefaults.standard.set(Date(), forKey: StorageKey.lastPostDate)
+        saveLocalData()
+
+        print("Moment posté avec image: \(imageId)")
+    }
     
     // MARK: - Reaction Actions
-    
+
     func addTextReaction(to moment: Moment, text: String) {
         guard !text.isEmpty else { return }
-        
+
         let reaction = Reaction(
             author: currentUser,
             type: .text(text)
         )
-        
-        if let index = moments.firstIndex(where: { $0.id == moment.id }) {
+
+        // Vérifier si c'est mon propre moment du jour
+        if let myMoment = myTodayMoment, myMoment.id == moment.id {
+            myTodayMoment?.reactions.append(reaction)
+        }
+        // Sinon chercher dans les moments des amis
+        else if let index = moments.firstIndex(where: { $0.id == moment.id }) {
             moments[index].reactions.append(reaction)
         }
     }
-    
+
     func addVoiceReaction(to moment: Moment, duration: TimeInterval) {
         let reaction = Reaction(
             author: currentUser,
             type: .voice(duration: min(duration, 3)) // Max 3 secondes
         )
-        
-        if let index = moments.firstIndex(where: { $0.id == moment.id }) {
+
+        // Vérifier si c'est mon propre moment du jour
+        if let myMoment = myTodayMoment, myMoment.id == moment.id {
+            myTodayMoment?.reactions.append(reaction)
+        }
+        // Sinon chercher dans les moments des amis
+        else if let index = moments.firstIndex(where: { $0.id == moment.id }) {
             moments[index].reactions.append(reaction)
         }
     }

@@ -30,17 +30,19 @@ struct User: Identifiable, Equatable {
 struct Moment: Identifiable {
     let id: UUID
     let author: User
-    let imageName: String?  // Nom de l'image dans MockPhotos
+    let imageName: String?  // Nom de l'image dans MockPhotos ou ID d'image capturée
     let placeholderColor: Color
     let capturedAt: Date
+    var description: String?  // Description du moment
     var reactions: [Reaction]
-    
+
     init(
         id: UUID = UUID(),
         author: User,
         imageName: String? = nil,
         placeholderColor: Color = .tymerDarkGray,
         capturedAt: Date = Date(),
+        description: String? = nil,
         reactions: [Reaction] = []
     ) {
         self.id = id
@@ -48,6 +50,7 @@ struct Moment: Identifiable {
         self.imageName = imageName
         self.placeholderColor = placeholderColor
         self.capturedAt = capturedAt
+        self.description = description
         self.reactions = reactions
     }
     
