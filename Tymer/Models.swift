@@ -136,24 +136,26 @@ struct TimeWindow {
 // MARK: - App Navigation
 enum AppScreen: Equatable {
     case splash
+    case auth
     case onboarding
     case gate
     case feed
     case capture
     case circle
-    case digest
+    case profile       // Renamed from digest
     case messages
     case momentDetail(Moment)
-    
+
     static func == (lhs: AppScreen, rhs: AppScreen) -> Bool {
         switch (lhs, rhs) {
         case (.splash, .splash),
+             (.auth, .auth),
              (.onboarding, .onboarding),
              (.gate, .gate),
              (.feed, .feed),
              (.capture, .capture),
              (.circle, .circle),
-             (.digest, .digest),
+             (.profile, .profile),
              (.messages, .messages):
             return true
         case (.momentDetail(let lhsMoment), .momentDetail(let rhsMoment)):

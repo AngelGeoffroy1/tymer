@@ -81,13 +81,13 @@ struct GateView: View {
             
             Button(action: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    appState.navigate(to: .digest)
+                    appState.navigate(to: .profile)
                 }
             }) {
                 VStack(spacing: 2) {
-                    Image(systemName: "calendar")
+                    Image(systemName: "person.circle")
                         .font(.system(size: 16))
-                    Text("Digest")
+                    Text("Profil")
                         .font(.funnelLight(10))
                 }
                 .foregroundColor(.tymerGray)
