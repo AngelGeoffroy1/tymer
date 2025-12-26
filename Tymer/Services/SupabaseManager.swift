@@ -352,7 +352,8 @@ final class SupabaseManager: ObservableObject {
             throw NSError(domain: "SupabaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "Non authentifié"])
         }
 
-        let fileName = "\(userId.uuidString)/\(UUID().uuidString).jpg"
+        // UUID must be lowercase to match auth.uid() in RLS policies
+        let fileName = "\(userId.uuidString.lowercased())/\(UUID().uuidString.lowercased()).jpg"
 
         try await client.storage
             .from("moments")
@@ -372,7 +373,8 @@ final class SupabaseManager: ObservableObject {
             throw NSError(domain: "SupabaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "Non authentifié"])
         }
 
-        let fileName = "\(userId.uuidString)/\(UUID().uuidString).m4a"
+        // UUID must be lowercase to match auth.uid() in RLS policies
+        let fileName = "\(userId.uuidString.lowercased())/\(UUID().uuidString.lowercased()).m4a"
 
         try await client.storage
             .from("voice-reactions")
@@ -388,7 +390,8 @@ final class SupabaseManager: ObservableObject {
             throw NSError(domain: "SupabaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "Non authentifié"])
         }
 
-        let fileName = "\(userId.uuidString)/avatar.jpg"
+        // UUID must be lowercase to match auth.uid() in RLS policies
+        let fileName = "\(userId.uuidString.lowercased())/avatar.jpg"
 
         // Try to remove existing avatar first (ignore errors)
         _ = try? await client.storage
@@ -397,7 +400,7 @@ final class SupabaseManager: ObservableObject {
 
         try await client.storage
             .from("avatars")
-            .upload(fileName, data: imageData, options: FileOptions(contentType: "image/jpeg"))
+            .upload(fileName, data: imageData, options: FileOptions(contentType: "image/jpeg", upsert: true))
 
         // Get public URL and update profile
         let publicURL = try client.storage

@@ -15,6 +15,7 @@ struct ProfileView: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var cardsAppeared = false
+    @State private var showEditProfile = false
     @State private var showImagePicker = false
     @State private var selectedImage: UIImage?
     @State private var isUploadingAvatar = false
@@ -26,19 +27,24 @@ struct ProfileView: View {
             Color.tymerBlack
                 .ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Header
-                    headerSection
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Header
+                        headerSection
 
-                    // Profile Section
-                    profileSection
+                        // Profile Section
+                        profileSection
 
-                    // Digest Section
-                    digestSection
-
-                    Spacer(minLength: 40)
+                        // Digest Section
+                        digestSection
+                    }
                 }
+
+                Spacer()
+
+                // Logout button fixed at bottom
+                logoutSection
             }
         }
         .offset(x: dragOffset)
@@ -50,6 +56,13 @@ struct ProfileView: View {
         }
         .onDisappear {
             cardsAppeared = false
+        }
+        .sheet(isPresented: $showEditProfile) {
+            EditProfileSheet(
+                showImagePicker: $showImagePicker,
+                selectedImage: $selectedImage,
+                isUploadingAvatar: $isUploadingAvatar
+            )
         }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(image: $selectedImage)
@@ -103,9 +116,22 @@ struct ProfileView: View {
 
             Spacer()
 
-            Text("Mon Profil")
-                .font(.tymerSubheadline)
-                .foregroundColor(.tymerWhite)
+            HStack(spacing: 12) {
+                Text("Mon Profil")
+                    .font(.tymerSubheadline)
+                    .foregroundColor(.tymerWhite)
+
+                Button {
+                    showEditProfile = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.tymerWhite)
+                        .frame(width: 32, height: 32)
+                        .background(Color.tymerDarkGray.opacity(0.6))
+                        .clipShape(Circle())
+                }
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
@@ -115,114 +141,92 @@ struct ProfileView: View {
 
     private var profileSection: some View {
         VStack(spacing: 20) {
-            // Avatar
-            ZStack {
-                if let avatarUrl = supabase.currentProfile?.avatarUrl,
-                   let url = URL(string: avatarUrl) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            avatarPlaceholder
-                                .overlay(ProgressView().tint(.tymerWhite))
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        case .failure:
-                            avatarPlaceholder
-                        @unknown default:
-                            avatarPlaceholder
+            // Avatar + User Info (horizontal layout)
+            HStack(spacing: 20) {
+                // Avatar
+                ZStack {
+                    if let avatarUrl = supabase.currentProfile?.avatarUrl,
+                       let url = URL(string: avatarUrl) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .empty:
+                                avatarPlaceholder
+                                    .overlay(ProgressView().tint(.tymerWhite))
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            case .failure:
+                                avatarPlaceholder
+                            @unknown default:
+                                avatarPlaceholder
+                            }
+                        }
+                        .frame(width: 80, height: 80)
+                        .clipShape(Circle())
+                    } else {
+                        avatarPlaceholder
+                    }
+
+                    // Loading overlay
+                    if isUploadingAvatar {
+                        Circle()
+                            .fill(Color.black.opacity(0.5))
+                            .frame(width: 80, height: 80)
+                            .overlay(ProgressView().tint(.tymerWhite))
+                    }
+                }
+
+                // User Info
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(supabase.currentProfile?.firstName ?? appState.currentUser.firstName)
+                        .font(.funnelSemiBold(24))
+                        .foregroundColor(.tymerWhite)
+
+                    if let email = supabase.currentSession?.user.email {
+                        Text(email)
+                            .font(.funnelLight(13))
+                            .foregroundColor(.tymerGray)
+                    }
+
+                    // Stats inline
+                    HStack(spacing: 16) {
+                        HStack(spacing: 4) {
+                            Text("\(appState.weeklyDigest.count)")
+                                .font(.funnelSemiBold(16))
+                                .foregroundColor(.tymerWhite)
+                            Text("Moments")
+                                .font(.funnelLight(12))
+                                .foregroundColor(.tymerGray)
+                        }
+                        HStack(spacing: 4) {
+                            Text("\(appState.circle.count)")
+                                .font(.funnelSemiBold(16))
+                                .foregroundColor(.tymerWhite)
+                            Text("Amis")
+                                .font(.funnelLight(12))
+                                .foregroundColor(.tymerGray)
                         }
                     }
-                    .frame(width: 100, height: 100)
-                    .clipShape(Circle())
-                } else {
-                    avatarPlaceholder
+                    .padding(.top, 4)
                 }
 
-                // Edit button overlay
-                if isUploadingAvatar {
-                    Circle()
-                        .fill(Color.black.opacity(0.5))
-                        .frame(width: 100, height: 100)
-                        .overlay(ProgressView().tint(.tymerWhite))
-                }
+                Spacer()
             }
-            .onTapGesture {
-                showImagePicker = true
-            }
-            .overlay(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(Color.tymerWhite)
-                    .frame(width: 32, height: 32)
-                    .overlay(
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.tymerBlack)
-                    )
-                    .offset(x: 4, y: 4)
-            }
-
-            // User Info
-            VStack(spacing: 8) {
-                Text(supabase.currentProfile?.firstName ?? appState.currentUser.firstName)
-                    .font(.funnelSemiBold(28))
-                    .foregroundColor(.tymerWhite)
-
-                if let email = supabase.currentSession?.user.email {
-                    Text(email)
-                        .font(.funnelLight(14))
-                        .foregroundColor(.tymerGray)
-                }
-            }
-
-            // Stats
-            HStack(spacing: 40) {
-                statItem(value: "\(appState.weeklyDigest.count)", label: "Moments")
-                statItem(value: "\(appState.circle.count)", label: "Amis")
-            }
-            .padding(.top, 8)
-
-            // Logout button
-            Button {
-                Task {
-                    try? await supabase.signOut()
-                    appState.navigate(to: .auth)
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                    Text("Déconnexion")
-                }
-                .font(.funnelLight(14))
-                .foregroundColor(.red.opacity(0.8))
-            }
-            .padding(.top, 16)
         }
-        .padding(.vertical, 32)
+        .padding(.vertical, 24)
         .padding(.horizontal, 20)
     }
 
     private var avatarPlaceholder: some View {
         Circle()
             .fill(supabase.currentProfile?.displayColor ?? appState.currentUser.avatarColor)
-            .frame(width: 100, height: 100)
+            .frame(width: 80, height: 80)
             .overlay(
                 Text(supabase.currentProfile?.initials ?? appState.currentUser.initials)
-                    .font(.funnelSemiBold(36))
+                    .font(.funnelSemiBold(28))
                     .foregroundColor(.tymerWhite)
             )
-    }
-
-    private func statItem(value: String, label: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.funnelSemiBold(24))
-                .foregroundColor(.tymerWhite)
-            Text(label)
-                .font(.funnelLight(12))
-                .foregroundColor(.tymerGray)
-        }
     }
 
     // MARK: - Digest Section
@@ -274,6 +278,26 @@ struct ProfileView: View {
         }
     }
 
+    // MARK: - Logout Section
+
+    private var logoutSection: some View {
+        Button {
+            Task {
+                try? await supabase.signOut()
+                appState.navigate(to: .auth)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                Text("Déconnexion")
+            }
+            .font(.funnelLight(14))
+            .foregroundColor(.red.opacity(0.8))
+        }
+        .padding(.vertical, 16)
+        .padding(.bottom, 20)
+    }
+
     private var thumbnailSize: CGFloat {
         (UIScreen.main.bounds.width - 40 - 16) / 3
     }
@@ -305,6 +329,180 @@ struct ProfileView: View {
         }
 
         selectedImage = nil
+    }
+}
+
+// MARK: - Edit Profile Sheet
+
+struct EditProfileSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var supabase = SupabaseManager.shared
+
+    @Binding var showImagePicker: Bool
+    @Binding var selectedImage: UIImage?
+    @Binding var isUploadingAvatar: Bool
+
+    @State private var firstName: String = ""
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.tymerBlack
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 32) {
+                        // Avatar Section
+                        VStack(spacing: 16) {
+                            ZStack {
+                                if let avatarUrl = supabase.currentProfile?.avatarUrl,
+                                   let url = URL(string: avatarUrl) {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .empty:
+                                            avatarPlaceholder
+                                                .overlay(ProgressView().tint(.tymerWhite))
+                                        case .success(let image):
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                        case .failure:
+                                            avatarPlaceholder
+                                        @unknown default:
+                                            avatarPlaceholder
+                                        }
+                                    }
+                                    .frame(width: 100, height: 100)
+                                    .clipShape(Circle())
+                                } else {
+                                    avatarPlaceholder
+                                }
+
+                                if isUploadingAvatar {
+                                    Circle()
+                                        .fill(Color.black.opacity(0.5))
+                                        .frame(width: 100, height: 100)
+                                        .overlay(ProgressView().tint(.tymerWhite))
+                                }
+                            }
+
+                            Button {
+                                showImagePicker = true
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 12))
+                                    Text("Changer la photo")
+                                        .font(.funnelLight(14))
+                                }
+                                .foregroundColor(.tymerWhite)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color.tymerDarkGray)
+                                .clipShape(Capsule())
+                            }
+                        }
+                        .padding(.top, 20)
+
+                        // Form Fields
+                        VStack(alignment: .leading, spacing: 20) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Prénom")
+                                    .font(.funnelLight(12))
+                                    .foregroundColor(.tymerGray)
+
+                                TextField("", text: $firstName)
+                                    .font(.funnelSemiBold(18))
+                                    .foregroundColor(.tymerWhite)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(Color.tymerDarkGray.opacity(0.5))
+                                    .cornerRadius(12)
+                            }
+
+                            if let email = supabase.currentSession?.user.email {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Email")
+                                        .font(.funnelLight(12))
+                                        .foregroundColor(.tymerGray)
+
+                                    Text(email)
+                                        .font(.funnelLight(16))
+                                        .foregroundColor(.tymerGray)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 14)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Color.tymerDarkGray.opacity(0.3))
+                                        .cornerRadius(12)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+
+                        Spacer(minLength: 40)
+                    }
+                }
+            }
+            .navigationTitle("Modifier le profil")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.tymerBlack, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") {
+                        dismiss()
+                    }
+                    .foregroundColor(.tymerGray)
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task {
+                            await saveProfile()
+                        }
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                                .tint(.tymerWhite)
+                        } else {
+                            Text("Enregistrer")
+                                .foregroundColor(.tymerWhite)
+                        }
+                    }
+                    .disabled(isSaving || firstName.isEmpty)
+                }
+            }
+            .onAppear {
+                firstName = supabase.currentProfile?.firstName ?? ""
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var avatarPlaceholder: some View {
+        Circle()
+            .fill(supabase.currentProfile?.displayColor ?? .blue)
+            .frame(width: 100, height: 100)
+            .overlay(
+                Text(supabase.currentProfile?.initials ?? "?")
+                    .font(.funnelSemiBold(36))
+                    .foregroundColor(.tymerWhite)
+            )
+    }
+
+    private func saveProfile() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await supabase.updateProfile(firstName: firstName)
+            dismiss()
+        } catch {
+            print("Error saving profile: \(error)")
+        }
     }
 }
 
