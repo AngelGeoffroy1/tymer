@@ -27,24 +27,26 @@ struct ProfileView: View {
             Color.tymerBlack
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Header
-                        headerSection
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Header
+                    headerSection
 
-                        // Profile Section
-                        profileSection
+                    // Profile Section
+                    profileSection
 
-                        // Digest Section
-                        digestSection
-                    }
+                    // Timeline Section
+                    timelineSection
+
+                    // Digest Section
+                    digestSection
+
+                    Spacer(minLength: 40)
+
+                    // Logout button at bottom of content
+                    logoutSection
                 }
-
-                Spacer()
-
-                // Logout button fixed at bottom
-                logoutSection
+                .frame(minHeight: UIScreen.main.bounds.height - 100)
             }
         }
         .offset(x: dragOffset)
@@ -229,13 +231,95 @@ struct ProfileView: View {
             )
     }
 
-    // MARK: - Digest Section
+    // MARK: - Timeline Section
+
+    /// Combine all moments (mine + friends) sorted by date
+    private var allMoments: [Moment] {
+        let combined = appState.weeklyDigest + appState.moments
+        return combined.sorted { $0.capturedAt > $1.capturedAt }
+    }
+
+    private var timelineSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Section header
+            HStack {
+                Text("Timeline")
+                    .font(.funnelSemiBold(20))
+                    .foregroundColor(.tymerWhite)
+
+                Spacer()
+
+                Text("\(allMoments.count) moments")
+                    .font(.funnelLight(12))
+                    .foregroundColor(.tymerGray)
+            }
+            .padding(.horizontal, 20)
+
+            if allMoments.isEmpty {
+                // Empty state
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 24))
+                            .foregroundColor(.tymerDarkGray)
+                        Text("Aucun moment")
+                            .font(.funnelLight(12))
+                            .foregroundColor(.tymerGray)
+                    }
+                    .padding(.vertical, 30)
+                    Spacer()
+                }
+            } else {
+                // Timeline scroll
+                ScrollView(.horizontal, showsIndicators: false) {
+                    ZStack(alignment: .leading) {
+                        // Wavy timeline line
+                        TimelineWavyLine()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.tymerDarkGray.opacity(0.3), .tymerDarkGray.opacity(0.6), .tymerDarkGray.opacity(0.3)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                            )
+                            .frame(height: 140)
+
+                        // Moments
+                        HStack(spacing: 0) {
+                            ForEach(Array(allMoments.prefix(15).enumerated()), id: \.element.id) { index, moment in
+                                TimelineMomentCard(
+                                    moment: moment,
+                                    index: index,
+                                    isCurrentUser: moment.author.id == appState.currentUser.id
+                                )
+                                .scaleEffect(cardsAppeared ? 1.0 : 0.6)
+                                .opacity(cardsAppeared ? 1.0 : 0)
+                                .animation(
+                                    .spring(response: 0.5, dampingFraction: 0.7)
+                                    .delay(Double(index) * 0.08),
+                                    value: cardsAppeared
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                    }
+                }
+                .frame(height: 160)
+            }
+        }
+        .padding(.vertical, 16)
+    }
+
+    // MARK: - My Moments Section
 
     private var digestSection: some View {
         VStack(spacing: 16) {
             // Section header
             HStack {
-                Text("Mon Digest")
+                Text("Mes moments")
                     .font(.funnelSemiBold(20))
                     .foregroundColor(.tymerWhite)
 
@@ -269,7 +353,7 @@ struct ProfileView: View {
                         .font(.system(size: 40))
                         .foregroundColor(.tymerDarkGray)
 
-                    Text("Aucun moment cette semaine")
+                    Text("Tu n'as pas encore posté")
                         .font(.funnelLight(14))
                         .foregroundColor(.tymerGray)
                 }
@@ -546,6 +630,128 @@ struct ImagePicker: UIViewControllerRepresentable {
                     self.parent.image = image as? UIImage
                 }
             }
+        }
+    }
+}
+
+// MARK: - Timeline Components
+
+/// Wavy line shape for timeline background
+struct TimelineWavyLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let midY = rect.height / 2
+        let amplitude: CGFloat = 15
+        let wavelength: CGFloat = 80
+
+        path.move(to: CGPoint(x: 0, y: midY))
+
+        var x: CGFloat = 0
+        while x < rect.width {
+            let y = midY + sin(x / wavelength * .pi * 2) * amplitude
+            path.addLine(to: CGPoint(x: x, y: y))
+            x += 1
+        }
+
+        return path
+    }
+}
+
+/// Individual moment card for timeline
+struct TimelineMomentCard: View {
+    let moment: Moment
+    let index: Int
+    let isCurrentUser: Bool
+
+    private let cardSize: CGFloat = 70
+    private let rotationAngles: [Double] = [-8, 5, -3, 7, -5, 4, -6, 8, -4, 6, -7, 3, -5, 8, -3]
+
+    var body: some View {
+        VStack(spacing: 6) {
+            // Date label
+            Text(dateLabel)
+                .font(.funnelLight(9))
+                .foregroundColor(.tymerGray)
+                .opacity(index % 2 == 0 ? 1 : 0)
+
+            // Photo card with rotation
+            ZStack {
+                // Shadow/glow effect
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isCurrentUser ? Color.tymerWhite.opacity(0.1) : moment.author.avatarColor.opacity(0.2))
+                    .frame(width: cardSize, height: cardSize)
+                    .blur(radius: 8)
+
+                // Photo
+                Group {
+                    if let imageName = moment.imageName,
+                       let uiImage = PhotoLoader.loadImage(named: imageName) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        placeholderView
+                    }
+                }
+                .frame(width: cardSize, height: cardSize)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            isCurrentUser ? Color.tymerWhite.opacity(0.3) : moment.author.avatarColor.opacity(0.5),
+                            lineWidth: 2
+                        )
+                )
+                .rotationEffect(.degrees(rotationAngles[index % rotationAngles.count]))
+
+                // Author badge
+                Circle()
+                    .fill(moment.author.avatarColor)
+                    .frame(width: 22, height: 22)
+                    .overlay(
+                        Text(moment.author.initials)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.white)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(Color.tymerBlack, lineWidth: 2)
+                    )
+                    .offset(x: cardSize/2 - 8, y: -cardSize/2 + 8)
+            }
+            .frame(width: cardSize + 20, height: cardSize + 20)
+            .offset(y: index % 2 == 0 ? -10 : 10)
+
+            // Time label
+            Text(moment.timeString)
+                .font(.funnelLight(9))
+                .foregroundColor(.tymerDarkGray)
+                .opacity(index % 2 == 1 ? 1 : 0)
+        }
+        .frame(width: 90)
+    }
+
+    private var placeholderView: some View {
+        Rectangle()
+            .fill(moment.placeholderColor)
+            .overlay(
+                Image(systemName: "photo")
+                    .font(.system(size: 16))
+                    .foregroundColor(.white.opacity(0.5))
+            )
+    }
+
+    private var dateLabel: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(moment.capturedAt) {
+            return "Auj."
+        } else if calendar.isDateInYesterday(moment.capturedAt) {
+            return "Hier"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "E"
+            formatter.locale = Locale(identifier: "fr_FR")
+            return formatter.string(from: moment.capturedAt).capitalized
         }
     }
 }
