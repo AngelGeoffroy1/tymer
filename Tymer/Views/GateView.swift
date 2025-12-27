@@ -68,18 +68,19 @@ struct GateView: View {
 
     // MARK: - Feed Page (ancienne vue principale)
     private var feedPage: some View {
-        VStack(spacing: 0) {
-            // Header avec animation de disparition
+        ZStack(alignment: .top) {
+            // Contenu scrollable - occupe tout l'écran
+            feedSection
+
+            // Header en overlay - glisse vers le haut pour disparaître
             VStack(spacing: 0) {
                 headerSection
                 windowStatusBar
             }
-            .frame(height: headerVisible ? nil : 0, alignment: .top)
-            .clipped()
+            .background(Color.tymerBlack)
+            .offset(y: headerVisible ? 0 : -100)
             .opacity(headerVisible ? 1 : 0)
-            .animation(.easeInOut(duration: 0.2), value: headerVisible)
-
-            feedSection
+            .animation(.easeInOut(duration: 0.25), value: headerVisible)
         }
     }
 
@@ -125,7 +126,7 @@ struct GateView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 12)
-        .background(Color.tymerBlack) // Pour capter les touches
+        .contentShape(Rectangle()) // Pour capter les touches
     }
     
     // MARK: - Window Status Bar
@@ -162,6 +163,10 @@ struct GateView: View {
     private var feedSection: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 16) {
+                // Espace pour le header (à l'intérieur du scroll)
+                Color.clear
+                    .frame(height: 90)
+
                 // Tracker pour détecter le scroll
                 Color.clear
                     .frame(height: 1)
