@@ -172,9 +172,13 @@ final class SupabaseManager: ObservableObject {
     // MARK: - Moments
 
     func fetchFriendsMoments() async throws -> [MomentDTO] {
+        guard let userId = userId else { return [] }
+
+        // Fetch moments from friends only (exclude current user's moments)
         let moments: [MomentDTO] = try await client
             .from("moments")
             .select("*, profiles!author_id(*), reactions(*, profiles!author_id(*))")
+            .neq("author_id", value: userId.uuidString)
             .order("captured_at", ascending: false)
             .execute()
             .value
@@ -200,21 +204,11 @@ final class SupabaseManager: ObservableObject {
     func hasPostedToday() async throws -> Bool {
         guard let userId = userId else { return false }
 
-        let today = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        // Check if user has a moment captured today
+        let moments = try await fetchMyMoments(limit: 1)
+        guard let lastMoment = moments.first else { return false }
 
-        let formatter = ISO8601DateFormatter()
-
-        let result: [PostingDateDTO] = try await client
-            .from("posting_dates")
-            .select()
-            .eq("user_id", value: userId.uuidString)
-            .gte("posted_date", value: formatter.string(from: today))
-            .lt("posted_date", value: formatter.string(from: tomorrow))
-            .execute()
-            .value
-
-        return !result.isEmpty
+        return Calendar.current.isDateInToday(lastMoment.capturedAt)
     }
 
     func createMoment(imagePath: String?, description: String?) async throws -> MomentDTO {
@@ -235,17 +229,6 @@ final class SupabaseManager: ObservableObject {
             .single()
             .execute()
             .value
-
-        // Register posting date
-        let postingDate = CreatePostingDateDTO(
-            userId: userId,
-            momentId: moment.id
-        )
-
-        try await client
-            .from("posting_dates")
-            .insert(postingDate)
-            .execute()
 
         return moment
     }

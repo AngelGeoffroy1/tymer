@@ -38,9 +38,22 @@ struct PhotoLoader {
         return SupabaseManager.shared.getMomentImageURL(path)
     }
 
-    /// Check if the path looks like a Supabase storage path (contains /)
+    /// Check if the path looks like a Supabase storage path
+    /// Accepts both paths with "/" (user folders) and files at bucket root (e.g., IMG_2458.jpeg)
     static func isSupabasePath(_ path: String) -> Bool {
-        return path.contains("/") && !path.hasPrefix("/")
+        // Local paths start with "/" (absolute) or are UUIDs from local storage
+        if path.hasPrefix("/") {
+            return false
+        }
+        // If it contains "/" it's a Supabase user folder path
+        if path.contains("/") {
+            return true
+        }
+        // Files at bucket root (e.g., IMG_2458.jpeg, IMG_2662.png)
+        // Check if it has a common image extension
+        let imageExtensions = ["jpg", "jpeg", "png", "heic", "webp"]
+        let lowercasePath = path.lowercased()
+        return imageExtensions.contains { lowercasePath.hasSuffix(".\($0)") }
     }
 }
 

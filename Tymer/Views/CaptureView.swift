@@ -14,7 +14,6 @@ struct CaptureView: View {
     @State private var showPreview = false
     @State private var capturedImage: UIImage?
     @State private var flashAnimation = false
-    @State private var showPhotoLibrary = false
     @State private var showPermissionAlert = false
     @State private var momentDescription: String = ""
     @FocusState private var isDescriptionFocused: Bool
@@ -49,11 +48,6 @@ struct CaptureView: View {
             if let image = newImage {
                 handleCapturedImage(image)
                 cameraService.capturedImage = nil
-            }
-        }
-        .sheet(isPresented: $showPhotoLibrary) {
-            PhotoLibraryPicker { image in
-                handleCapturedImage(image)
             }
         }
         .alert("Accès à la caméra refusé", isPresented: $showPermissionAlert) {
@@ -135,25 +129,9 @@ struct CaptureView: View {
 
             Spacer()
 
-            // Action buttons
-            VStack(spacing: 20) {
-                // Main capture button
-                captureButton
-
-                // Photo library option
-                Button {
-                    showPhotoLibrary = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "photo.on.rectangle")
-                            .font(.system(size: 14))
-                        Text("Choisir dans la galerie")
-                            .font(.funnelLight(14))
-                    }
-                    .foregroundColor(.tymerGray)
-                }
-            }
-            .padding(.bottom, 60)
+            // Capture button
+            captureButton
+                .padding(.bottom, 60)
         }
     }
 

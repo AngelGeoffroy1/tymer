@@ -105,6 +105,12 @@ final class AppState {
         }
     }
 
+    /// Check if error is a cancellation (should be ignored during refresh)
+    private func isCancellationError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+
     @MainActor
     private func loadTimeWindows() async {
         do {
@@ -112,9 +118,13 @@ final class AppState {
             timeWindows = windowDTOs.map { $0.toTimeWindow() }
             updateTimeWindowStatus()
         } catch {
+            // Ignore cancellation errors, preserve existing data
+            guard !isCancellationError(error) else { return }
             print("Error loading time windows: \(error)")
-            // Use default windows as fallback
-            timeWindows = TimeWindow.defaultWindows
+            // Use default windows as fallback only if we have none
+            if timeWindows.isEmpty {
+                timeWindows = TimeWindow.defaultWindows
+            }
             updateTimeWindowStatus()
         }
     }
@@ -128,8 +138,9 @@ final class AppState {
             let friends = try await supabase.fetchFriends()
             circle = friends.map { $0.toUser() }
         } catch {
+            // Ignore cancellation errors, preserve existing data
+            guard !isCancellationError(error) else { return }
             print("Error loading friends: \(error)")
-            // No fallback - keep empty circle
         }
     }
 
@@ -142,8 +153,9 @@ final class AppState {
             let momentDTOs = try await supabase.fetchFriendsMoments()
             moments = momentDTOs.map { $0.toMoment() }
         } catch {
+            // Ignore cancellation errors, preserve existing data
+            guard !isCancellationError(error) else { return }
             print("Error loading moments: \(error)")
-            // No fallback - keep empty moments
         }
     }
 
@@ -159,8 +171,9 @@ final class AppState {
                 myTodayMoment = todayMoment.toMoment()
             }
         } catch {
+            // Ignore cancellation errors, preserve existing data
+            guard !isCancellationError(error) else { return }
             print("Error loading my moments: \(error)")
-            // No fallback - keep empty weekly digest
         }
     }
 
@@ -169,8 +182,10 @@ final class AppState {
         do {
             hasPostedToday = try await supabase.hasPostedToday()
         } catch {
+            // Ignore cancellation errors, preserve existing data
+            guard !isCancellationError(error) else { return }
             print("Error checking today post: \(error)")
-            // Fallback to local check
+            // Fallback to local check only for real errors
             checkTodayPostLocal()
         }
     }

@@ -7,7 +7,6 @@
 
 import SwiftUI
 import AVFoundation
-import PhotosUI
 import Combine
 
 // MARK: - Camera Permission Manager
@@ -262,50 +261,6 @@ struct CameraPicker: UIViewControllerRepresentable {
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             parent.dismiss()
-        }
-    }
-}
-
-// MARK: - Photo Library Picker
-struct PhotoLibraryPicker: UIViewControllerRepresentable {
-    @Environment(\.dismiss) private var dismiss
-    let onImageSelected: (UIImage) -> Void
-
-    func makeUIViewController(context: Context) -> PHPickerViewController {
-        var config = PHPickerConfiguration()
-        config.filter = .images
-        config.selectionLimit = 1
-
-        let picker = PHPickerViewController(configuration: config)
-        picker.delegate = context.coordinator
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    class Coordinator: NSObject, PHPickerViewControllerDelegate {
-        let parent: PhotoLibraryPicker
-
-        init(_ parent: PhotoLibraryPicker) {
-            self.parent = parent
-        }
-
-        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            parent.dismiss()
-
-            guard let result = results.first else { return }
-
-            result.itemProvider.loadObject(ofClass: UIImage.self) { object, error in
-                if let image = object as? UIImage {
-                    DispatchQueue.main.async {
-                        self.parent.onImageSelected(image)
-                    }
-                }
-            }
         }
     }
 }

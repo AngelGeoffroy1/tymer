@@ -194,34 +194,6 @@ struct CreateFriendshipDTO: Codable {
     }
 }
 
-// MARK: - Posting Date DTO
-
-struct PostingDateDTO: Codable, Identifiable {
-    let id: UUID
-    let userId: UUID
-    let momentId: UUID
-    let postedDate: String
-    let createdAt: Date
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case userId = "user_id"
-        case momentId = "moment_id"
-        case postedDate = "posted_date"
-        case createdAt = "created_at"
-    }
-}
-
-struct CreatePostingDateDTO: Codable {
-    let userId: UUID
-    let momentId: UUID
-
-    enum CodingKeys: String, CodingKey {
-        case userId = "user_id"
-        case momentId = "moment_id"
-    }
-}
-
 // MARK: - Window DTO
 
 struct WindowDTO: Codable, Identifiable {
