@@ -10,10 +10,11 @@ import SwiftUI
 struct CircleView: View {
     @Environment(AppState.self) private var appState
     @State private var showInviteSheet = false
-    @State private var dragOffset: CGFloat = 0
     @State private var selectedFriend: User?
     @State private var showDeleteConfirmation = false
-    
+
+    var onNavigateToFeed: (() -> Void)?
+
     var body: some View {
         ZStack {
             Color.tymerBlack
@@ -39,25 +40,6 @@ struct CircleView: View {
                 .frame(minHeight: UIScreen.main.bounds.height - 100)
             }
         }
-        .offset(x: dragOffset)
-        .gesture(
-            DragGesture(minimumDistance: 30)
-                .onChanged { value in
-                    if value.translation.width < 0 {
-                        dragOffset = value.translation.width * 0.4
-                    }
-                }
-                .onEnded { value in
-                    if value.translation.width < -80 {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            appState.navigate(to: .gate)
-                        }
-                    }
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        dragOffset = 0
-                    }
-                }
-        )
         .sheet(isPresented: $showInviteSheet) {
             inviteSheet
         }
@@ -86,20 +68,19 @@ struct CircleView: View {
             Text("Mon Cercle")
                 .font(.tymerSubheadline)
                 .foregroundColor(.tymerWhite)
-            
+
             Spacer()
-            
-            HStack(spacing: 4) {
-                Text("Portail")
-                    .font(.funnelLight(14))
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-            }
-            .foregroundColor(.tymerGray)
-            .onTapGesture {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    appState.navigate(to: .gate)
+
+            Button {
+                onNavigateToFeed?()
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Swipe")
+                        .font(.funnelLight(12))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12))
                 }
+                .foregroundColor(.tymerDarkGray)
             }
         }
         .padding(.horizontal, 20)

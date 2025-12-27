@@ -13,12 +13,13 @@ struct ProfileView: View {
     @Environment(AppState.self) private var appState
     @StateObject private var supabase = SupabaseManager.shared
 
-    @State private var dragOffset: CGFloat = 0
     @State private var cardsAppeared = false
     @State private var showEditProfile = false
     @State private var showImagePicker = false
     @State private var selectedImage: UIImage?
     @State private var isUploadingAvatar = false
+
+    var onNavigateToFeed: (() -> Void)?
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
 
@@ -27,7 +28,7 @@ struct ProfileView: View {
             Color.tymerBlack
                 .ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     // Header
                     headerSection
@@ -49,8 +50,6 @@ struct ProfileView: View {
                 .frame(minHeight: UIScreen.main.bounds.height - 100)
             }
         }
-        .offset(x: dragOffset)
-        .gesture(swipeGesture)
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {
                 cardsAppeared = true
@@ -78,42 +77,20 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Swipe Gesture
-
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 30)
-            .onChanged { value in
-                if value.translation.width > 0 {
-                    dragOffset = value.translation.width * 0.4
-                }
-            }
-            .onEnded { value in
-                if value.translation.width > 80 {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        appState.navigate(to: .gate)
-                    }
-                }
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    dragOffset = 0
-                }
-            }
-    }
-
     // MARK: - Header
 
     private var headerSection: some View {
         HStack {
-            HStack(spacing: 4) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14))
-                Text("Portail")
-                    .font(.funnelLight(14))
-            }
-            .foregroundColor(.tymerGray)
-            .onTapGesture {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    appState.navigate(to: .gate)
+            Button {
+                onNavigateToFeed?()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12))
+                    Text("Swipe")
+                        .font(.funnelLight(12))
                 }
+                .foregroundColor(.tymerDarkGray)
             }
 
             Spacer()

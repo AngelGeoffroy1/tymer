@@ -32,25 +32,53 @@ struct GateView: View {
     @State private var headerVisible: Bool = true
     @State private var scrollStartY: CGFloat = 0
     @State private var hasScrolledEnough: Bool = false
+    @State private var selectedTab: Int = 1 // 0 = Circle, 1 = Feed, 2 = Profile
 
     var body: some View {
         ZStack {
             Color.tymerBlack
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Header avec animation de disparition
-                VStack(spacing: 0) {
-                    headerSection
-                    windowStatusBar
-                }
-                .frame(height: headerVisible ? nil : 0, alignment: .top)
-                .clipped()
-                .opacity(headerVisible ? 1 : 0)
-                .animation(.easeInOut(duration: 0.2), value: headerVisible)
+            TabView(selection: $selectedTab) {
+                // Page 0: CircleView
+                CircleView(onNavigateToFeed: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedTab = 1
+                    }
+                })
+                .tag(0)
 
-                feedSection
+                // Page 1: Feed (contenu principal)
+                feedPage
+                    .tag(1)
+
+                // Page 2: ProfileView
+                ProfileView(onNavigateToFeed: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedTab = 1
+                    }
+                })
+                .tag(2)
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea()
+        }
+    }
+
+    // MARK: - Feed Page (ancienne vue principale)
+    private var feedPage: some View {
+        VStack(spacing: 0) {
+            // Header avec animation de disparition
+            VStack(spacing: 0) {
+                headerSection
+                windowStatusBar
+            }
+            .frame(height: headerVisible ? nil : 0, alignment: .top)
+            .clipped()
+            .opacity(headerVisible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.2), value: headerVisible)
+
+            feedSection
         }
     }
 
@@ -59,7 +87,7 @@ struct GateView: View {
         HStack {
             Button(action: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    appState.navigate(to: .circle)
+                    selectedTab = 0
                 }
             }) {
                 VStack(spacing: 2) {
@@ -70,18 +98,18 @@ struct GateView: View {
                 }
                 .foregroundColor(.tymerGray)
             }
-            
+
             Spacer()
-            
+
             Text("Tymer")
                 .font(.funnelSemiBold(24))
                 .foregroundColor(.tymerWhite)
-            
+
             Spacer()
-            
+
             Button(action: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    appState.navigate(to: .profile)
+                    selectedTab = 2
                 }
             }) {
                 VStack(spacing: 2) {
