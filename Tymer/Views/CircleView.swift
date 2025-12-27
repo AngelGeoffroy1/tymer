@@ -18,18 +18,25 @@ struct CircleView: View {
         ZStack {
             Color.tymerBlack
                 .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                headerSection
-                
-                CircleCounterBadge(current: appState.circleCount, max: appState.circleLimit)
-                    .padding(.top, 16)
-                
-                friendsList
-                
-                if appState.canAddFriend {
-                    inviteSection
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    headerSection
+
+                    CircleOrbitRing(friends: appState.circle, maxSlots: appState.circleLimit)
+                        .padding(.top, 24)
+                        .padding(.bottom, 16)
+                        .frame(maxWidth: .infinity)
+
+                    friendsList
+
+                    if appState.canAddFriend {
+                        inviteSection
+                    }
+
+                    Spacer(minLength: 40)
                 }
+                .frame(minHeight: UIScreen.main.bounds.height - 100)
             }
         }
         .offset(x: dragOffset)
@@ -101,21 +108,18 @@ struct CircleView: View {
     
     // MARK: - Friends List
     private var friendsList: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 0) {
-                ForEach(appState.circle) { friend in
-                    FriendRowWithDelete(user: friend) {
-                        selectedFriend = friend
-                        showDeleteConfirmation = true
-                    }
-                    .padding(.horizontal, 20)
-                    
-                    Divider()
-                        .background(Color.tymerDarkGray)
-                        .padding(.leading, 86)
+        LazyVStack(spacing: 0) {
+            ForEach(appState.circle) { friend in
+                FriendRowWithDelete(user: friend) {
+                    selectedFriend = friend
+                    showDeleteConfirmation = true
                 }
+                .padding(.horizontal, 20)
+
+                Divider()
+                    .background(Color.tymerDarkGray)
+                    .padding(.leading, 86)
             }
-            .padding(.top, 24)
         }
     }
     
@@ -196,52 +200,30 @@ struct CircleView: View {
 struct FriendRowWithDelete: View {
     let user: User
     let onDelete: () -> Void
-    
-    @State private var showDeleteButton = false
-    
+
     var body: some View {
         HStack(spacing: 16) {
             FriendAvatar(user, size: 50)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(user.firstName)
                     .font(.funnelSemiBold(16))
                     .foregroundColor(.tymerWhite)
-                
+
                 Text("Dans le cercle")
                     .font(.funnelLight(12))
                     .foregroundColor(.tymerGray)
             }
-            
+
             Spacer()
-            
-            if showDeleteButton {
-                Button(action: onDelete) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(.red)
-                        .padding(8)
-                        .background(Color.red.opacity(0.2))
-                        .clipShape(Circle())
-                }
-                .transition(.scale.combined(with: .opacity))
-            }
         }
         .padding(.vertical, 12)
         .contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 0.5) {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                showDeleteButton.toggle()
-            }
-            
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.impactOccurred()
-        }
-        .onTapGesture {
-            if showDeleteButton {
-                withAnimation {
-                    showDeleteButton = false
-                }
+        .contextMenu {
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("Supprimer du cercle", systemImage: "person.badge.minus")
             }
         }
     }
