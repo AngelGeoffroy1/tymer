@@ -33,6 +33,7 @@ struct GateView: View {
     @State private var scrollStartY: CGFloat = 0
     @State private var hasScrolledEnough: Bool = false
     @State private var selectedTab: Int = 1 // 0 = Circle, 1 = Feed, 2 = Profile
+    @State private var isRefreshing: Bool = false
 
     var body: some View {
         ZStack {
@@ -133,26 +134,20 @@ struct GateView: View {
             Circle()
                 .fill(appState.isWindowOpen ? Color.green : Color.tymerDarkGray)
                 .frame(width: 6, height: 6)
-            
-            // TODO: Remove this toggle in production - Test toggle to simulate window open/close
-            Button {
-                appState.isWindowOpen.toggle()
-            } label: {
-                if appState.isWindowOpen {
-                    Text("Fenêtre ouverte")
-                        .font(.funnelSemiBold(11))
-                        .foregroundColor(.tymerWhite)
-                } else {
-                    Text("Fermée")
-                        .font(.funnelSemiBold(11))
-                        .foregroundColor(.tymerGray)
-                }
+
+            if appState.isWindowOpen {
+                Text("Fenêtre ouverte")
+                    .font(.funnelSemiBold(11))
+                    .foregroundColor(.tymerWhite)
+            } else {
+                Text("Fermée")
+                    .font(.funnelSemiBold(11))
+                    .foregroundColor(.tymerGray)
             }
-            .buttonStyle(PlainButtonStyle())
-            
+
             Text("•")
                 .foregroundColor(.tymerDarkGray)
-            
+
             Text(appState.nextWindowCountdown)
                 .font(.funnelLight(11))
                 .foregroundColor(.tymerDarkGray)
@@ -190,17 +185,30 @@ struct GateView: View {
                             .frame(height: 1)
                     }
                     .padding(.horizontal, 16)
-                }
 
-                ForEach(appState.moments) { moment in
-                    PostCard(
-                        moment: moment,
-                        isBlurred: !appState.isWindowOpen
-                    )
+                    ForEach(appState.moments) { moment in
+                        PostCard(
+                            moment: moment,
+                            isBlurred: !appState.isWindowOpen
+                        )
+                    }
+                } else {
+                    // Empty state - no moments from friends
+                    emptyFeedState
                 }
             }
             .padding(.bottom, 100)
         }
+        .refreshable {
+            await refreshFeed()
+        }
+    }
+
+    // MARK: - Refresh
+    private func refreshFeed() async {
+        isRefreshing = true
+        await appState.loadData()
+        isRefreshing = false
     }
 
     // MARK: - Scroll Handling
@@ -285,6 +293,97 @@ struct GateView: View {
         .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, 16)
     }
+
+    // MARK: - Empty Feed State
+    private var emptyFeedState: some View {
+        VStack(spacing: 24) {
+            Spacer()
+                .frame(height: 40)
+
+            // Illustration
+            ZStack {
+                Circle()
+                    .stroke(Color.tymerDarkGray.opacity(0.3), lineWidth: 2)
+                    .frame(width: 120, height: 120)
+
+                Circle()
+                    .stroke(Color.tymerDarkGray.opacity(0.2), lineWidth: 1)
+                    .frame(width: 160, height: 160)
+
+                Image(systemName: "person.2.slash")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundColor(.tymerGray)
+            }
+
+            VStack(spacing: 12) {
+                Text("Ton cercle est silencieux")
+                    .font(.funnelSemiBold(18))
+                    .foregroundColor(.tymerWhite)
+
+                Text(emptyStateMessage)
+                    .font(.funnelLight(14))
+                    .foregroundColor(.tymerGray)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            // Actions
+            VStack(spacing: 12) {
+                if !appState.hasPostedToday {
+                    Button {
+                        appState.navigate(to: .capture)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 14))
+                            Text("Capturer mon moment")
+                                .font(.funnelSemiBold(14))
+                        }
+                        .foregroundColor(.tymerBlack)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 14)
+                        .background(Color.tymerWhite)
+                        .clipShape(Capsule())
+                    }
+                }
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedTab = 0
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 14))
+                        Text("Inviter des amis")
+                            .font(.funnelLight(14))
+                    }
+                    .foregroundColor(.tymerWhite)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 14)
+                    .background(
+                        Capsule()
+                            .stroke(Color.tymerDarkGray, lineWidth: 1)
+                    )
+                }
+            }
+
+            Spacer()
+                .frame(height: 40)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+    }
+
+    private var emptyStateMessage: String {
+        if appState.circle.isEmpty {
+            return "Invite tes amis pour voir leurs moments quotidiens"
+        } else if !appState.hasPostedToday {
+            return "Sois le premier à partager ton moment aujourd'hui !"
+        } else {
+            return "Tes amis n'ont pas encore posté aujourd'hui"
+        }
+    }
 }
 
 // MARK: - Post Card Component
@@ -300,7 +399,22 @@ struct PostCard: View {
     @State private var recordingTimer: Timer?
     @State private var showExpandedReactions = false
     @State private var recordingDuration: Double = 0
-    
+
+    private var windowDisplayText: String {
+        let windows = appState.timeWindows.isEmpty ? TimeWindow.defaultWindows : appState.timeWindows
+        return windows.map { $0.displayTime }.joined(separator: " • ")
+    }
+
+    private var placeholderPattern: some View {
+        MockPhotoPattern(
+            baseColor: moment.placeholderColor,
+            patternType: abs(moment.id.hashValue) % 4
+        )
+        .frame(height: 400)
+        .blur(radius: isBlurred ? 30 : 0)
+        .allowsHitTesting(false)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             postHeader
@@ -350,22 +464,24 @@ struct PostCard: View {
     
     private var photoSection: some View {
         ZStack {
-            if let imageName = moment.imageName, let uiImage = PhotoLoader.loadImage(named: imageName) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 400)
-                    .clipped()
-                    .blur(radius: isBlurred ? 30 : 0)
-                    .allowsHitTesting(false) // L'image ne bloque pas les touches
+            if let imagePath = moment.imageName {
+                // Check if it's a Supabase path or local
+                if PhotoLoader.isSupabasePath(imagePath) {
+                    SupabaseImage(path: imagePath, height: 400, blurRadius: isBlurred ? 30 : 0)
+                        .allowsHitTesting(false)
+                } else if let uiImage = PhotoLoader.loadImage(named: imagePath) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 400)
+                        .clipped()
+                        .blur(radius: isBlurred ? 30 : 0)
+                        .allowsHitTesting(false)
+                } else {
+                    placeholderPattern
+                }
             } else {
-                MockPhotoPattern(
-                    baseColor: moment.placeholderColor,
-                    patternType: abs(moment.id.hashValue) % 4
-                )
-                .frame(height: 400)
-                .blur(radius: isBlurred ? 30 : 0)
-                .allowsHitTesting(false) // Le pattern ne bloque pas les touches
+                placeholderPattern
             }
 
             if isBlurred {
@@ -376,7 +492,7 @@ struct PostCard: View {
                     Text("Visible pendant la fenêtre")
                         .font(.funnelSemiBold(13))
                         .foregroundColor(.tymerWhite)
-                    Text("8h-9h • 19h-20h")
+                    Text(windowDisplayText)
                         .font(.funnelLight(11))
                         .foregroundColor(.tymerGray)
                 }

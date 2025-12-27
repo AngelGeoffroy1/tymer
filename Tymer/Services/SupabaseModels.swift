@@ -222,6 +222,30 @@ struct CreatePostingDateDTO: Codable {
     }
 }
 
+// MARK: - Window DTO
+
+struct WindowDTO: Codable, Identifiable {
+    let id: UUID
+    let label: String
+    let startHour: Int
+    let endHour: Int
+    let displayTime: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case label
+        case startHour = "start_hour"
+        case endHour = "end_hour"
+        case displayTime = "display_time"
+        case createdAt = "created_at"
+    }
+
+    func toTimeWindow() -> TimeWindow {
+        TimeWindow(start: startHour, end: endHour, label: label, displayTime: displayTime)
+    }
+}
+
 // MARK: - Color Extension
 
 extension Color {

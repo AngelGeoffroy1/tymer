@@ -36,12 +36,13 @@ final class AppState {
     var isWindowOpen: Bool = false
     var currentWindow: TimeWindow?
     var nextWindowCountdown: String = ""
+    var timeWindows: [TimeWindow] = [] // Loaded from Supabase
 
     // MARK: Weekly Digest
     var weeklyDigest: [Moment] = []
 
     // MARK: Debug Mode (pour tester sans restriction horaire)
-    var debugModeEnabled: Bool = true
+    var debugModeEnabled: Bool = false
 
     // MARK: Audio Recording
     var audioRecorder: AVAudioRecorder?
@@ -82,9 +83,11 @@ final class AppState {
 
     @MainActor
     func loadData() async {
+        // Always load windows first (even if not authenticated)
+        await loadTimeWindows()
+
         guard supabase.isAuthenticated else {
-            // Fallback to mock data for preview/testing
-            loadMockData()
+            // No mock data - show empty state when not authenticated
             return
         }
 
@@ -103,6 +106,20 @@ final class AppState {
     }
 
     @MainActor
+    private func loadTimeWindows() async {
+        do {
+            let windowDTOs = try await supabase.fetchWindows()
+            timeWindows = windowDTOs.map { $0.toTimeWindow() }
+            updateTimeWindowStatus()
+        } catch {
+            print("Error loading time windows: \(error)")
+            // Use default windows as fallback
+            timeWindows = TimeWindow.defaultWindows
+            updateTimeWindowStatus()
+        }
+    }
+
+    @MainActor
     private func loadFriends() async {
         isLoadingFriends = true
         defer { isLoadingFriends = false }
@@ -112,10 +129,7 @@ final class AppState {
             circle = friends.map { $0.toUser() }
         } catch {
             print("Error loading friends: \(error)")
-            // Fallback to mock
-            if circle.isEmpty {
-                circle = User.mockUsers
-            }
+            // No fallback - keep empty circle
         }
     }
 
@@ -129,10 +143,7 @@ final class AppState {
             moments = momentDTOs.map { $0.toMoment() }
         } catch {
             print("Error loading moments: \(error)")
-            // Fallback to mock
-            if moments.isEmpty {
-                moments = Moment.mockMoments()
-            }
+            // No fallback - keep empty moments
         }
     }
 
@@ -149,10 +160,7 @@ final class AppState {
             }
         } catch {
             print("Error loading my moments: \(error)")
-            // Fallback to mock
-            if weeklyDigest.isEmpty {
-                weeklyDigest = Moment.mockWeeklyDigest()
-            }
+            // No fallback - keep empty weekly digest
         }
     }
 
@@ -165,19 +173,6 @@ final class AppState {
             // Fallback to local check
             checkTodayPostLocal()
         }
-    }
-
-    private func loadMockData() {
-        if circle.isEmpty {
-            circle = User.mockUsers
-        }
-        if moments.isEmpty {
-            moments = Moment.mockMoments()
-        }
-        if weeklyDigest.isEmpty {
-            weeklyDigest = Moment.mockWeeklyDigest()
-        }
-        checkTodayPostLocal()
     }
 
     private func checkTodayPostLocal() {
@@ -202,18 +197,21 @@ final class AppState {
     }
     
     // MARK: - Time Window Logic
-    
+
     func updateTimeWindowStatus() {
         let now = Date()
-        
+
+        // Use loaded windows or defaults
+        let windows = timeWindows.isEmpty ? TimeWindow.defaultWindows : timeWindows
+
         if debugModeEnabled {
             isWindowOpen = true
-            currentWindow = .morning
+            currentWindow = windows.first ?? .morning
             nextWindowCountdown = "Mode démo"
             return
         }
-        
-        for window in TimeWindow.all {
+
+        for window in windows {
             if window.isOpen(at: now) {
                 isWindowOpen = true
                 currentWindow = window
@@ -224,7 +222,7 @@ final class AppState {
                 return
             }
         }
-        
+
         isWindowOpen = false
         currentWindow = nil
         nextWindowCountdown = calculateNextWindowCountdown(from: now)
@@ -233,37 +231,51 @@ final class AppState {
     private func calculateNextWindowCountdown(from date: Date) -> String {
         let calendar = Calendar.current
         let currentHour = calendar.component(.hour, from: date)
-        
-        var nextWindow: TimeWindow
-        var nextDate: Date
-        
-        if currentHour < TimeWindow.morning.start {
-            nextWindow = .morning
-            var components = calendar.dateComponents([.year, .month, .day], from: date)
-            components.hour = TimeWindow.morning.start
-            components.minute = 0
-            nextDate = calendar.date(from: components) ?? date
-        } else if currentHour < TimeWindow.evening.start {
-            nextWindow = .evening
-            var components = calendar.dateComponents([.year, .month, .day], from: date)
-            components.hour = TimeWindow.evening.start
-            components.minute = 0
-            nextDate = calendar.date(from: components) ?? date
-        } else {
-            nextWindow = .morning
+
+        // Use loaded windows or defaults
+        let windows = timeWindows.isEmpty ? TimeWindow.defaultWindows : timeWindows
+        let sortedWindows = windows.sorted { $0.start < $1.start }
+
+        guard !sortedWindows.isEmpty else {
+            return "Aucune fenêtre"
+        }
+
+        // Find the next window
+        var nextWindow: TimeWindow?
+        var nextDate: Date?
+
+        // Check for windows later today
+        for window in sortedWindows {
+            if currentHour < window.start {
+                nextWindow = window
+                var components = calendar.dateComponents([.year, .month, .day], from: date)
+                components.hour = window.start
+                components.minute = 0
+                nextDate = calendar.date(from: components)
+                break
+            }
+        }
+
+        // If no window found today, use first window tomorrow
+        if nextWindow == nil {
+            nextWindow = sortedWindows.first
             var components = calendar.dateComponents([.year, .month, .day], from: date)
             components.day! += 1
-            components.hour = TimeWindow.morning.start
+            components.hour = nextWindow!.start
             components.minute = 0
-            nextDate = calendar.date(from: components) ?? date
+            nextDate = calendar.date(from: components)
         }
-        
-        let interval = nextDate.timeIntervalSince(date)
+
+        guard let window = nextWindow, let targetDate = nextDate else {
+            return "Aucune fenêtre"
+        }
+
+        let interval = targetDate.timeIntervalSince(date)
         let hours = Int(interval / 3600)
         let minutes = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
-        
+
         if hours > 0 {
-            return "\(nextWindow.label) dans \(hours)h\(minutes)"
+            return "\(window.label) dans \(hours)h\(minutes)"
         } else {
             return "Dans \(minutes)min"
         }

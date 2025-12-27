@@ -661,11 +661,16 @@ struct TimelineMomentCard: View {
 
                 // Photo
                 Group {
-                    if let imageName = moment.imageName,
-                       let uiImage = PhotoLoader.loadImage(named: imageName) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
+                    if let imagePath = moment.imageName {
+                        if PhotoLoader.isSupabasePath(imagePath) {
+                            SupabaseImage(path: imagePath, height: cardSize)
+                        } else if let uiImage = PhotoLoader.loadImage(named: imagePath) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } else {
+                            placeholderView
+                        }
                     } else {
                         placeholderView
                     }

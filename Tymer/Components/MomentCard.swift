@@ -32,6 +32,80 @@ struct PhotoLoader {
 
         return nil
     }
+
+    /// Returns the Supabase Storage URL for a moment image path
+    static func supabaseImageURL(for path: String) -> URL? {
+        return SupabaseManager.shared.getMomentImageURL(path)
+    }
+
+    /// Check if the path looks like a Supabase storage path (contains /)
+    static func isSupabasePath(_ path: String) -> Bool {
+        return path.contains("/") && !path.hasPrefix("/")
+    }
+}
+
+// MARK: - Async Image View for Supabase
+struct SupabaseImage: View {
+    let path: String
+    let height: CGFloat
+    var blurRadius: CGFloat = 0
+
+    @State private var loadedImage: UIImage?
+    @State private var isLoading = true
+
+    var body: some View {
+        Group {
+            if let image = loadedImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: height)
+                    .clipped()
+                    .blur(radius: blurRadius)
+            } else if isLoading {
+                Rectangle()
+                    .fill(Color.tymerDarkGray.opacity(0.3))
+                    .frame(height: height)
+                    .overlay(
+                        ProgressView()
+                            .tint(.tymerGray)
+                    )
+            } else {
+                Rectangle()
+                    .fill(Color.tymerDarkGray.opacity(0.3))
+                    .frame(height: height)
+            }
+        }
+        .task {
+            await loadImage()
+        }
+    }
+
+    private func loadImage() async {
+        guard let url = PhotoLoader.supabaseImageURL(for: path) else {
+            isLoading = false
+            return
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                await MainActor.run {
+                    loadedImage = image
+                    isLoading = false
+                }
+            } else {
+                await MainActor.run {
+                    isLoading = false
+                }
+            }
+        } catch {
+            print("Error loading image from Supabase: \(error)")
+            await MainActor.run {
+                isLoading = false
+            }
+        }
+    }
 }
 
 // MARK: - Mock Photo Patterns (Fallback)
@@ -200,18 +274,26 @@ struct MomentCard: View {
     
     @ViewBuilder
     private var photoContent: some View {
-        if let imageName = moment.imageName, let uiImage = PhotoLoader.loadImage(named: imageName) {
-            // Vraie photo
-            Image(uiImage: uiImage)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
+        if let imagePath = moment.imageName {
+            if PhotoLoader.isSupabasePath(imagePath) {
+                SupabaseImage(path: imagePath, height: UIScreen.main.bounds.height)
+            } else if let uiImage = PhotoLoader.loadImage(named: imagePath) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                patternFallback
+            }
         } else {
-            // Fallback : pattern coloré
-            MockPhotoPattern(
-                baseColor: moment.placeholderColor,
-                patternType: abs(moment.id.hashValue) % 4
-            )
+            patternFallback
         }
+    }
+
+    private var patternFallback: some View {
+        MockPhotoPattern(
+            baseColor: moment.placeholderColor,
+            patternType: abs(moment.id.hashValue) % 4
+        )
     }
 }
 
@@ -249,24 +331,33 @@ struct MomentThumbnail: View {
     
     @ViewBuilder
     private var thumbnailContent: some View {
-        if let imageName = moment.imageName, let uiImage = PhotoLoader.loadImage(named: imageName) {
-            // Vraie photo
-            Image(uiImage: uiImage)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: size, height: size)
+        if let imagePath = moment.imageName {
+            if PhotoLoader.isSupabasePath(imagePath) {
+                SupabaseImage(path: imagePath, height: size)
+                    .frame(width: size, height: size)
+            } else if let uiImage = PhotoLoader.loadImage(named: imagePath) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+            } else {
+                placeholderGradient
+            }
         } else {
-            // Fallback : gradient coloré
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [moment.placeholderColor.opacity(0.6), moment.placeholderColor.opacity(0.3)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
+            placeholderGradient
         }
+    }
+
+    private var placeholderGradient: some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(
+                LinearGradient(
+                    colors: [moment.placeholderColor.opacity(0.6), moment.placeholderColor.opacity(0.3)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(width: size, height: size)
     }
     
     private var dayString: String {

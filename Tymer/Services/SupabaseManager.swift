@@ -383,6 +383,19 @@ final class SupabaseManager: ObservableObject {
         return fileName
     }
 
+    // MARK: - Windows
+
+    func fetchWindows() async throws -> [WindowDTO] {
+        let windows: [WindowDTO] = try await client
+            .from("windows")
+            .select()
+            .order("start_hour", ascending: true)
+            .execute()
+            .value
+
+        return windows
+    }
+
     // MARK: - Avatar
 
     func uploadAvatar(_ imageData: Data) async throws -> String {

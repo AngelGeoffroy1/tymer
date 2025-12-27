@@ -100,27 +100,31 @@ enum ReactionType {
 }
 
 // MARK: - Time Window
-struct TimeWindow {
+struct TimeWindow: Equatable {
     let start: Int // Heure de début (0-23)
     let end: Int   // Heure de fin (0-23)
     let label: String
-    
-    /// Fenêtre du matin (8h-9h)
-    static let morning = TimeWindow(start: 8, end: 9, label: "Matin")
-    
-    /// Fenêtre du soir (19h-20h)
-    static let evening = TimeWindow(start: 19, end: 20, label: "Soir")
-    
-    /// Toutes les fenêtres
-    static let all: [TimeWindow] = [.morning, .evening]
-    
+    let displayTime: String // Format: "08H-09H"
+
+    init(start: Int, end: Int, label: String, displayTime: String? = nil) {
+        self.start = start
+        self.end = end
+        self.label = label
+        self.displayTime = displayTime ?? String(format: "%02dH-%02dH", start, end)
+    }
+
+    /// Fenêtres par défaut (utilisées uniquement si Supabase n'est pas disponible)
+    static let morning = TimeWindow(start: 8, end: 9, label: "Matin", displayTime: "08H-09H")
+    static let evening = TimeWindow(start: 19, end: 20, label: "Soir", displayTime: "19H-20H")
+    static let defaultWindows: [TimeWindow] = [.morning, .evening]
+
     /// Vérifie si l'heure actuelle est dans cette fenêtre
     func isOpen(at date: Date = Date()) -> Bool {
         let calendar = Calendar.current
         let hour = calendar.component(.hour, from: date)
         return hour >= start && hour < end
     }
-    
+
     /// Temps restant jusqu'à la fermeture (si ouverte)
     func remainingTime(at date: Date = Date()) -> TimeInterval? {
         guard isOpen(at: date) else { return nil }
