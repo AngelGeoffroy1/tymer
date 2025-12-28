@@ -255,12 +255,38 @@ struct GateView: View {
     // MARK: - My Capture Card
     private var myCaptureCard: some View {
         Group {
-            if appState.hasPostedToday, let myMoment = appState.myTodayMoment {
+            if appState.isUploadingMoment {
+                uploadingCard
+            } else if appState.hasPostedToday, let myMoment = appState.myTodayMoment {
                 PostCard(moment: myMoment, isBlurred: false, isMyPost: true)
             } else {
                 capturePromptCard
             }
         }
+    }
+
+    private var uploadingCard: some View {
+        HStack(spacing: 16) {
+            ProgressView()
+                .tint(.tymerWhite)
+                .scaleEffect(1.2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Publication en cours...")
+                    .font(.funnelSemiBold(14))
+                    .foregroundColor(.tymerWhite)
+                Text("Ton moment arrive")
+                    .font(.funnelLight(12))
+                    .foregroundColor(.tymerGray)
+            }
+            Spacer()
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.tymerDarkGray.opacity(0.3))
+        )
+        .padding(.horizontal, 16)
     }
     
     private var capturePromptCard: some View {

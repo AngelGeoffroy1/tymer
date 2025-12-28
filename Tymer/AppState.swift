@@ -51,6 +51,7 @@ final class AppState {
     // MARK: Loading States
     var isLoadingMoments: Bool = false
     var isLoadingFriends: Bool = false
+    var isUploadingMoment: Bool = false
 
     private var timer: Timer?
     private let supabase = SupabaseManager.shared
@@ -368,6 +369,9 @@ final class AppState {
         // Nettoyer la description (nil si vide)
         let cleanDescription = description?.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalDescription = (cleanDescription?.isEmpty ?? true) ? nil : cleanDescription
+
+        isUploadingMoment = true
+        defer { isUploadingMoment = false }
 
         // Try to upload to Supabase if authenticated
         if supabase.isAuthenticated {

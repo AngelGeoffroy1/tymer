@@ -174,11 +174,18 @@ final class SupabaseManager: ObservableObject {
     func fetchFriendsMoments() async throws -> [MomentDTO] {
         guard let userId = userId else { return [] }
 
-        // Fetch moments from friends only (exclude current user's moments)
+        // Calculate start of today (midnight)
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let dateFormatter = ISO8601DateFormatter()
+        let todayString = dateFormatter.string(from: startOfToday)
+
+        // Fetch moments from friends only, captured today
         let moments: [MomentDTO] = try await client
             .from("moments")
             .select("*, profiles!author_id(*), reactions(*, profiles!author_id(*))")
             .neq("author_id", value: userId.uuidString)
+            .gte("captured_at", value: todayString)
             .order("captured_at", ascending: false)
             .execute()
             .value
