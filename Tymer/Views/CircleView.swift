@@ -12,6 +12,9 @@ struct CircleView: View {
     @State private var showInviteSheet = false
     @State private var selectedFriend: User?
     @State private var showDeleteConfirmation = false
+    @State private var inviteCode: String?
+    @State private var isLoadingInvite = false
+    @State private var linkCopied = false
 
     var onNavigateToFeed: (() -> Void)?
 
@@ -123,38 +126,50 @@ struct CircleView: View {
         ZStack {
             Color.tymerBlack
                 .ignoresSafeArea()
-            
+
             VStack(spacing: 32) {
                 Capsule()
                     .fill(Color.tymerDarkGray)
                     .frame(width: 40, height: 4)
                     .padding(.top, 12)
-                
+
                 Spacer()
-                
+
                 VStack(spacing: 24) {
                     Image(systemName: "link")
                         .font(.system(size: 48, weight: .light))
                         .foregroundColor(.tymerWhite)
-                    
+
                     Text("Invite un ami")
                         .font(.tymerHeadline)
                         .foregroundColor(.tymerWhite)
-                    
+
                     Text("Partage ce lien unique.\nSeules les personnes avec le lien peuvent rejoindre ton cercle.")
                         .font(.tymerBody)
                         .foregroundColor(.tymerGray)
                         .multilineTextAlignment(.center)
-                    
+
                     HStack {
-                        Text("tymer.app/invite/abc123")
-                            .font(.funnelLight(14))
-                            .foregroundColor(.tymerGray)
-                        
+                        if isLoadingInvite {
+                            ProgressView()
+                                .tint(.tymerGray)
+                            Text("Génération du lien...")
+                                .font(.funnelLight(14))
+                                .foregroundColor(.tymerGray)
+                        } else if let code = inviteCode {
+                            Text("tymer.app/invite/\(code)")
+                                .font(.funnelLight(14))
+                                .foregroundColor(.tymerGray)
+                        } else {
+                            Text("Erreur de génération")
+                                .font(.funnelLight(14))
+                                .foregroundColor(.red.opacity(0.7))
+                        }
+
                         Spacer()
-                        
-                        Image(systemName: "doc.on.doc")
-                            .foregroundColor(.tymerWhite)
+
+                        Image(systemName: linkCopied ? "checkmark" : "doc.on.doc")
+                            .foregroundColor(linkCopied ? .green : .tymerWhite)
                     }
                     .padding()
                     .background(
@@ -163,17 +178,53 @@ struct CircleView: View {
                     )
                     .padding(.horizontal, 24)
                 }
-                
+
                 Spacer()
-                
-                TymerButton("Copier le lien", style: .primary) {
-                    UIPasteboard.general.string = "tymer.app/invite/abc123"
-                    showInviteSheet = false
+
+                TymerButton(linkCopied ? "Copié !" : "Copier le lien", style: .primary) {
+                    if let code = inviteCode {
+                        UIPasteboard.general.string = "https://tymer.app/invite/\(code)"
+                        linkCopied = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+                        // Reset après 2 secondes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            linkCopied = false
+                            showInviteSheet = false
+                        }
+                    }
                 }
+                .disabled(inviteCode == nil || isLoadingInvite)
                 .padding(.bottom, 40)
             }
         }
         .presentationDetents([.medium])
+        .onAppear {
+            loadInviteCode()
+        }
+        .onDisappear {
+            linkCopied = false
+        }
+    }
+
+    private func loadInviteCode() {
+        guard inviteCode == nil else { return }
+
+        isLoadingInvite = true
+        Task {
+            do {
+                let code = try await SupabaseManager.shared.getOrCreateInvitation()
+                await MainActor.run {
+                    inviteCode = code
+                    isLoadingInvite = false
+                }
+            } catch {
+                print("Error loading invite code: \(error)")
+                await MainActor.run {
+                    isLoadingInvite = false
+                }
+            }
+        }
     }
 }
 

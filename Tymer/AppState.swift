@@ -332,20 +332,92 @@ final class AppState {
     }
     
     // MARK: - Circle Actions
-    
+
     var circleCount: Int { circle.count }
     let circleLimit: Int = 25
     var canAddFriend: Bool { circleCount < circleLimit }
-    
+
     func removeFriend(_ user: User) {
         circle.removeAll { $0.id == user.id }
         // Supprimer aussi ses moments du feed
         moments.removeAll { $0.author.id == user.id }
     }
-    
+
     func addFriend(_ user: User) {
         guard canAddFriend else { return }
         circle.append(user)
+    }
+
+    // MARK: - Deep Link / Invitation Handling
+
+    var pendingInviteCode: String?
+    var inviteAcceptanceState: InviteAcceptanceState = .none
+
+    enum InviteAcceptanceState: Equatable {
+        case none
+        case processing
+        case success(friendName: String)
+        case error(message: String)
+    }
+
+    /// Handle incoming deep link URL
+    func handleDeepLink(_ url: URL) {
+        // Expected format: tymer://invite/CODE or https://tymer.app/invite/CODE
+        let pathComponents = url.pathComponents
+
+        // Find "invite" in path and get the code after it
+        if let inviteIndex = pathComponents.firstIndex(of: "invite"),
+           inviteIndex + 1 < pathComponents.count {
+            let code = pathComponents[inviteIndex + 1]
+            processInviteCode(code)
+        }
+    }
+
+    /// Process an invitation code
+    func processInviteCode(_ code: String) {
+        // If not authenticated, save for later
+        guard supabase.isAuthenticated else {
+            pendingInviteCode = code
+            return
+        }
+
+        inviteAcceptanceState = .processing
+
+        Task { @MainActor in
+            do {
+                let friend = try await supabase.acceptInvitation(code: code)
+                if let friend = friend {
+                    // Add friend to circle locally
+                    let user = friend.toUser()
+                    if !circle.contains(where: { $0.id == user.id }) {
+                        circle.append(user)
+                    }
+                    inviteAcceptanceState = .success(friendName: friend.firstName)
+                } else {
+                    inviteAcceptanceState = .success(friendName: "ton nouvel ami")
+                }
+
+                // Auto-dismiss after 3 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    self.inviteAcceptanceState = .none
+                }
+            } catch {
+                let message = (error as NSError).localizedDescription
+                inviteAcceptanceState = .error(message: message)
+
+                // Auto-dismiss after 4 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    self.inviteAcceptanceState = .none
+                }
+            }
+        }
+    }
+
+    /// Process pending invite after login
+    func processPendingInviteIfNeeded() {
+        guard let code = pendingInviteCode else { return }
+        pendingInviteCode = nil
+        processInviteCode(code)
     }
     
     // MARK: - Post Actions

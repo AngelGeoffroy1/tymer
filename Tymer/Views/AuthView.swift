@@ -245,6 +245,9 @@ struct AuthView: View {
                 try await supabase.signIn(email: email, password: password)
             }
 
+            // Process any pending invitation after login
+            appState.processPendingInviteIfNeeded()
+
             // Navigate to gate on success
             appState.navigate(to: .gate)
 

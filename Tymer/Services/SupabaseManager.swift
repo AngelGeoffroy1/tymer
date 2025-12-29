@@ -336,6 +336,135 @@ final class SupabaseManager: ObservableObject {
             .execute()
     }
 
+    // MARK: - Invitations
+
+    /// Generate a unique invitation code
+    private func generateInviteCode() -> String {
+        let characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        return String((0..<8).map { _ in characters.randomElement()! })
+    }
+
+    /// Create a new invitation and return the invite code
+    func createInvitation() async throws -> String {
+        guard let userId = userId else {
+            throw NSError(domain: "SupabaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "Non authentifié"])
+        }
+
+        let code = generateInviteCode()
+        let invitation = CreateInvitationDTO(creatorId: userId, code: code)
+
+        try await client
+            .from("invitations")
+            .insert(invitation)
+            .execute()
+
+        return code
+    }
+
+    /// Fetch the current user's active invitation (creates one if none exists)
+    func getOrCreateInvitation() async throws -> String {
+        guard let userId = userId else {
+            throw NSError(domain: "SupabaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "Non authentifié"])
+        }
+
+        // Check for existing valid invitation
+        let invitations: [InvitationDTO] = try await client
+            .from("invitations")
+            .select()
+            .eq("creator_id", value: userId.uuidString)
+            .eq("is_used", value: false)
+            .gte("expires_at", value: ISO8601DateFormatter().string(from: Date()))
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        if let existingInvitation = invitations.first {
+            return existingInvitation.code
+        }
+
+        // Create new invitation if none exists
+        return try await createInvitation()
+    }
+
+    /// Validate an invitation code and return the invitation details
+    func validateInvitation(code: String) async throws -> InvitationDTO? {
+        let invitations: [InvitationDTO] = try await client
+            .from("invitations")
+            .select("*, creator:profiles!creator_id(*)")
+            .eq("code", value: code)
+            .eq("is_used", value: false)
+            .limit(1)
+            .execute()
+            .value
+
+        guard let invitation = invitations.first else { return nil }
+
+        // Check if expired
+        if let expiresAt = invitation.expiresAt, expiresAt < Date() {
+            return nil
+        }
+
+        return invitation
+    }
+
+    /// Accept an invitation - marks it as used and creates friendship
+    func acceptInvitation(code: String) async throws -> Profile? {
+        guard let userId = userId else {
+            throw NSError(domain: "SupabaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "Non authentifié"])
+        }
+
+        // Validate invitation
+        guard let invitation = try await validateInvitation(code: code) else {
+            throw NSError(domain: "SupabaseManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Invitation invalide ou expirée"])
+        }
+
+        // Can't accept own invitation
+        if invitation.creatorId == userId {
+            throw NSError(domain: "SupabaseManager", code: 400, userInfo: [NSLocalizedDescriptionKey: "Tu ne peux pas accepter ta propre invitation"])
+        }
+
+        // Check if already friends
+        let existingFriendships: [FriendshipDTO] = try await client
+            .from("friendships")
+            .select()
+            .or("and(user_id.eq.\(userId.uuidString),friend_id.eq.\(invitation.creatorId.uuidString)),and(user_id.eq.\(invitation.creatorId.uuidString),friend_id.eq.\(userId.uuidString))")
+            .execute()
+            .value
+
+        if !existingFriendships.isEmpty {
+            throw NSError(domain: "SupabaseManager", code: 409, userInfo: [NSLocalizedDescriptionKey: "Vous êtes déjà amis"])
+        }
+
+        // Mark invitation as used
+        try await client
+            .from("invitations")
+            .update([
+                "is_used": AnyJSON.bool(true),
+                "used_by": AnyJSON.string(userId.uuidString),
+                "used_at": AnyJSON.string(ISO8601DateFormatter().string(from: Date()))
+            ])
+            .eq("id", value: invitation.id.uuidString)
+            .execute()
+
+        // Create friendship (directly accepted)
+        let friendship = CreateFriendshipDTO(userId: invitation.creatorId, friendId: userId)
+        try await client
+            .from("friendships")
+            .insert(friendship)
+            .execute()
+
+        // Accept the friendship immediately
+        try await client
+            .from("friendships")
+            .update(["status": "accepted"])
+            .eq("user_id", value: invitation.creatorId.uuidString)
+            .eq("friend_id", value: userId.uuidString)
+            .execute()
+
+        return invitation.creator
+    }
+
     // MARK: - Storage
 
     func uploadMomentImage(_ imageData: Data) async throws -> String {

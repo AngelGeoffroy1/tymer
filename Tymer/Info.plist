@@ -13,5 +13,18 @@
 	<string>Tymer a besoin d'accéder à ton micro pour enregistrer des réactions vocales</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Tymer a besoin d'accéder à ta photothèque pour sélectionner des photos</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.tymer.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tymer</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

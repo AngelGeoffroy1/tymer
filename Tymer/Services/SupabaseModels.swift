@@ -200,6 +200,47 @@ struct CreateFriendshipDTO: Codable {
     }
 }
 
+// MARK: - Invitation DTO
+
+struct InvitationDTO: Codable, Identifiable {
+    let id: UUID
+    let creatorId: UUID
+    let code: String
+    let createdAt: Date
+    let expiresAt: Date?
+    let isUsed: Bool
+    let usedBy: UUID?
+    let usedAt: Date?
+
+    var creator: Profile?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case creatorId = "creator_id"
+        case code
+        case createdAt = "created_at"
+        case expiresAt = "expires_at"
+        case isUsed = "is_used"
+        case usedBy = "used_by"
+        case usedAt = "used_at"
+        case creator
+    }
+
+    var isValid: Bool {
+        !isUsed && (expiresAt == nil || expiresAt! > Date())
+    }
+}
+
+struct CreateInvitationDTO: Codable {
+    let creatorId: UUID
+    let code: String
+
+    enum CodingKeys: String, CodingKey {
+        case creatorId = "creator_id"
+        case code
+    }
+}
+
 // MARK: - Window DTO
 
 struct WindowDTO: Codable, Identifiable {
