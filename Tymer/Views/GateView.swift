@@ -715,17 +715,21 @@ struct PostCard: View {
     private func stopRecording() {
         recordingTimer?.invalidate()
         recordingTimer = nil
-        
+
         guard isRecordingVoice else { return }
         isRecordingVoice = false
-        
-        let duration = appState.stopVoiceRecording()
-        
+
+        let result = appState.stopVoiceRecording()
+
         if recordingDuration > 0.3 {
-            appState.addVoiceReaction(to: moment, duration: max(duration, recordingDuration))
+            appState.addVoiceReaction(
+                to: moment,
+                duration: max(result.duration, recordingDuration),
+                audioData: result.audioData
+            )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-        
+
         recordingDuration = 0
     }
     
@@ -741,54 +745,124 @@ struct PostCard: View {
 // MARK: - Reaction Row Component
 struct ReactionRow: View {
     let reaction: Reaction
-    
+    @Environment(AppState.self) private var appState
+
+    private var isPlaying: Bool {
+        appState.currentlyPlayingReactionId == reaction.id
+    }
+
+    private var isLoading: Bool {
+        appState.isLoadingAudio && appState.currentlyPlayingReactionId == reaction.id
+    }
+
+    private var progress: Double {
+        isPlaying ? appState.audioPlaybackProgress : 0
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             FriendAvatar(reaction.author, size: 28)
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(reaction.author.firstName)
                     .font(.funnelSemiBold(12))
                     .foregroundColor(.tymerWhite)
-                
+
                 reactionContent
             }
-            
+
             Spacer()
-            
+
             Text(relativeTime)
                 .font(.funnelLight(10))
                 .foregroundColor(.tymerDarkGray)
         }
         .padding(.vertical, 4)
     }
-    
+
     @ViewBuilder
     private var reactionContent: some View {
         switch reaction.type {
         case .voice(let duration):
-            HStack(spacing: 6) {
-                Image(systemName: "waveform")
-                    .font(.system(size: 12))
-                    .foregroundColor(.tymerGray)
-                Text("\(String(format: "%.0f", duration))s")
-                    .font(.funnelLight(11))
-                    .foregroundColor(.tymerGray)
+            Button {
+                appState.playVoiceReaction(reaction)
+            } label: {
+                voiceReactionView(duration: duration)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(Color.tymerDarkGray.opacity(0.5))
-            )
-            
+            .buttonStyle(PlainButtonStyle())
+            .disabled(reaction.voicePath == nil)
+            .opacity(reaction.voicePath == nil ? 0.5 : 1)
+
         case .text(let message):
             Text(message)
                 .font(.funnelLight(12))
                 .foregroundColor(.tymerGray)
         }
     }
-    
+
+    @ViewBuilder
+    private func voiceReactionView(duration: TimeInterval) -> some View {
+        // Largeur proportionnelle à la durée (min 80, max 160 pour 3s)
+        let baseWidth: CGFloat = 80
+        let maxExtraWidth: CGFloat = 80
+        let durationRatio = min(duration / 3.0, 1.0)
+        let totalWidth = baseWidth + (maxExtraWidth * durationRatio)
+
+        HStack(spacing: 6) {
+            // Bouton play/stop
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .tint(.tymerWhite)
+                    .frame(width: 16, height: 16)
+            } else {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.tymerWhite)
+                    .frame(width: 16, height: 16)
+            }
+
+            // Barre de progression style Instagram
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // Fond de la barre
+                    Capsule()
+                        .fill(Color.tymerWhite.opacity(0.3))
+                        .frame(height: 3)
+
+                    // Progression
+                    Capsule()
+                        .fill(Color.tymerWhite)
+                        .frame(width: geo.size.width * progress, height: 3)
+                        .animation(.linear(duration: 0.05), value: progress)
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: 20)
+
+            // Durée
+            Text("\(String(format: "%.0f", duration))s")
+                .font(.funnelLight(10))
+                .foregroundColor(.tymerWhite.opacity(0.8))
+                .frame(width: 18, alignment: .trailing)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(width: totalWidth)
+        .background(
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: isPlaying
+                            ? [Color.blue, Color.purple.opacity(0.8)]
+                            : [Color.tymerDarkGray.opacity(0.8), Color.tymerDarkGray.opacity(0.6)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+        )
+    }
+
     private var relativeTime: String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated

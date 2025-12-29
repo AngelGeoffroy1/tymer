@@ -46,7 +46,15 @@ final class AppState {
 
     // MARK: Audio Recording
     var audioRecorder: AVAudioRecorder?
+    var audioRecorderURL: URL?  // URL du fichier audio enregistré
     var isRecording: Bool = false
+
+    // MARK: Audio Playback
+    var audioPlayer: AVAudioPlayer?
+    var currentlyPlayingReactionId: UUID?
+    var isLoadingAudio: Bool = false
+    var audioPlaybackProgress: Double = 0  // 0.0 à 1.0
+    private var playbackTimer: Timer?
 
     // MARK: Loading States
     var isLoadingMoments: Bool = false
@@ -464,7 +472,9 @@ final class AppState {
     }
 
     func addVoiceReaction(to moment: Moment, duration: TimeInterval, audioData: Data? = nil) {
+        let reactionId = UUID()
         let reaction = Reaction(
+            id: reactionId,
             author: currentUser,
             type: .voice(duration: min(duration, 3))
         )
@@ -478,10 +488,30 @@ final class AppState {
 
         // Sync with Supabase
         if supabase.isAuthenticated, let data = audioData {
-            Task {
+            Task { @MainActor in
                 do {
                     let voicePath = try await supabase.uploadVoiceReaction(data)
                     try await supabase.addVoiceReaction(to: moment.id, duration: min(duration, 3), voicePath: voicePath)
+
+                    // Mettre à jour la réaction locale avec le voicePath
+                    let updatedReaction = Reaction(
+                        id: reactionId,
+                        author: currentUser,
+                        type: .voice(duration: min(duration, 3)),
+                        voicePath: voicePath
+                    )
+
+                    if let myMoment = myTodayMoment, myMoment.id == moment.id {
+                        if let idx = myTodayMoment?.reactions.firstIndex(where: { $0.id == reactionId }) {
+                            myTodayMoment?.reactions[idx] = updatedReaction
+                        }
+                    } else if let momentIdx = moments.firstIndex(where: { $0.id == moment.id }) {
+                        if let reactionIdx = moments[momentIdx].reactions.firstIndex(where: { $0.id == reactionId }) {
+                            moments[momentIdx].reactions[reactionIdx] = updatedReaction
+                        }
+                    }
+
+                    print("Voice reaction uploaded successfully: \(voicePath)")
                 } catch {
                     print("Error adding voice reaction: \(error)")
                 }
@@ -493,46 +523,166 @@ final class AppState {
     
     func startVoiceRecording() {
         let audioSession = AVAudioSession.sharedInstance()
-        
+
         do {
             try audioSession.setCategory(.playAndRecord, mode: .default)
             try audioSession.setActive(true)
-            
+
             let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let audioFilename = documentsPath.appendingPathComponent("voice_reaction_\(UUID().uuidString).m4a")
-            
+
             let settings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
                 AVSampleRateKey: 44100,
                 AVNumberOfChannelsKey: 1,
                 AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
             ]
-            
+
             audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
+            audioRecorderURL = audioFilename  // Sauvegarder l'URL
             audioRecorder?.record()
             isRecording = true
-            
+
             // Haptic feedback
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
-            
+
         } catch {
             print("Failed to start recording: \(error)")
         }
     }
-    
-    func stopVoiceRecording() -> TimeInterval {
-        guard let recorder = audioRecorder, isRecording else { return 0 }
-        
+
+    /// Arrête l'enregistrement et retourne (durée, données audio)
+    func stopVoiceRecording() -> (duration: TimeInterval, audioData: Data?) {
+        guard let recorder = audioRecorder, isRecording else { return (0, nil) }
+
         let duration = recorder.currentTime
         recorder.stop()
         isRecording = false
+
+        // Lire les données du fichier audio
+        var audioData: Data?
+        if let url = audioRecorderURL {
+            audioData = try? Data(contentsOf: url)
+            // Nettoyer le fichier temporaire après lecture
+            try? FileManager.default.removeItem(at: url)
+        }
+
         audioRecorder = nil
-        
+        audioRecorderURL = nil
+
         // Haptic feedback
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
-        
-        return min(duration, 3) // Max 3 secondes
+
+        return (min(duration, 3), audioData)
+    }
+
+    // MARK: - Audio Playback
+
+    func playVoiceReaction(_ reaction: Reaction) {
+        guard let voicePath = reaction.voicePath else {
+            print("🔊 No voice path for reaction")
+            return
+        }
+
+        print("🔊 Playing voice reaction: \(voicePath)")
+
+        // Si déjà en lecture, arrêter
+        if currentlyPlayingReactionId == reaction.id {
+            stopVoicePlayback()
+            return
+        }
+
+        // Arrêter toute lecture en cours
+        stopVoicePlayback()
+
+        // Obtenir l'URL publique
+        guard let url = supabase.getVoiceReactionURL(voicePath) else {
+            print("🔊 Cannot get voice URL")
+            return
+        }
+
+        print("🔊 Voice URL: \(url)")
+
+        isLoadingAudio = true
+        currentlyPlayingReactionId = reaction.id
+
+        // Télécharger et jouer l'audio
+        Task {
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                print("🔊 Downloaded \(data.count) bytes, response: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+
+                await MainActor.run {
+                    do {
+                        // Configurer la session audio pour la lecture
+                        let audioSession = AVAudioSession.sharedInstance()
+                        try audioSession.setCategory(.playback, mode: .default)
+                        try audioSession.setActive(true)
+
+                        // Créer et jouer le lecteur
+                        audioPlayer = try AVAudioPlayer(data: data)
+                        audioPlayer?.delegate = AudioPlayerDelegate.shared
+                        AudioPlayerDelegate.shared.onFinish = { [weak self] in
+                            print("🔊 Audio finished playing")
+                            self?.stopVoicePlayback()
+                        }
+
+                        print("🔊 Audio duration: \(audioPlayer?.duration ?? 0)s")
+
+                        let success = audioPlayer?.play() ?? false
+                        print("🔊 Play started: \(success)")
+
+                        // Démarrer le timer de progression
+                        audioPlaybackProgress = 0
+                        playbackTimer?.invalidate()
+                        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                            guard let self = self,
+                                  let player = self.audioPlayer,
+                                  player.isPlaying else { return }
+                            self.audioPlaybackProgress = player.currentTime / player.duration
+                        }
+
+                        isLoadingAudio = false
+
+                        // Haptic feedback
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } catch {
+                        print("🔊 Error playing audio: \(error)")
+                        stopVoicePlayback()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    print("🔊 Error downloading audio: \(error)")
+                    stopVoicePlayback()
+                }
+            }
+        }
+    }
+
+    func stopVoicePlayback() {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+        audioPlayer?.stop()
+        audioPlayer = nil
+        currentlyPlayingReactionId = nil
+        isLoadingAudio = false
+        audioPlaybackProgress = 0
+    }
+
+    func isPlayingReaction(_ reactionId: UUID) -> Bool {
+        return currentlyPlayingReactionId == reactionId && audioPlayer?.isPlaying == true
+    }
+}
+
+// MARK: - Audio Player Delegate
+class AudioPlayerDelegate: NSObject, AVAudioPlayerDelegate {
+    static let shared = AudioPlayerDelegate()
+    var onFinish: (() -> Void)?
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        onFinish?()
     }
 }

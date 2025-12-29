@@ -138,7 +138,8 @@ struct ReactionDTO: Codable, Identifiable {
             id: id,
             author: author,
             type: type,
-            createdAt: createdAt
+            createdAt: createdAt,
+            voicePath: voicePath
         )
     }
 }

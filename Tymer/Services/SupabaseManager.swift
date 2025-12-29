@@ -373,6 +373,12 @@ final class SupabaseManager: ObservableObject {
         return fileName
     }
 
+    func getVoiceReactionURL(_ path: String) -> URL? {
+        try? client.storage
+            .from("voice-reactions")
+            .getPublicURL(path: path)
+    }
+
     // MARK: - Windows
 
     func fetchWindows() async throws -> [WindowDTO] {

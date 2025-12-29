@@ -76,12 +76,14 @@ struct Reaction: Identifiable {
     let author: User
     let type: ReactionType
     let createdAt: Date
-    
-    init(id: UUID = UUID(), author: User, type: ReactionType, createdAt: Date = Date()) {
+    let voicePath: String?  // Chemin vers le fichier audio dans Supabase Storage
+
+    init(id: UUID = UUID(), author: User, type: ReactionType, createdAt: Date = Date(), voicePath: String? = nil) {
         self.id = id
         self.author = author
         self.type = type
         self.createdAt = createdAt
+        self.voicePath = voicePath
     }
 }
 
