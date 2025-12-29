@@ -77,13 +77,15 @@ struct Reaction: Identifiable {
     let type: ReactionType
     let createdAt: Date
     let voicePath: String?  // Chemin vers le fichier audio dans Supabase Storage
+    let waveformData: [Float]?  // Données de forme d'onde pour l'affichage
 
-    init(id: UUID = UUID(), author: User, type: ReactionType, createdAt: Date = Date(), voicePath: String? = nil) {
+    init(id: UUID = UUID(), author: User, type: ReactionType, createdAt: Date = Date(), voicePath: String? = nil, waveformData: [Float]? = nil) {
         self.id = id
         self.author = author
         self.type = type
         self.createdAt = createdAt
         self.voicePath = voicePath
+        self.waveformData = waveformData
     }
 }
 

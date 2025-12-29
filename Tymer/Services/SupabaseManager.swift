@@ -259,7 +259,7 @@ final class SupabaseManager: ObservableObject {
             .execute()
     }
 
-    func addVoiceReaction(to momentId: UUID, duration: Double, voicePath: String) async throws {
+    func addVoiceReaction(to momentId: UUID, duration: Double, voicePath: String, waveformData: [Float]? = nil) async throws {
         guard let userId = userId else { return }
 
         let reaction = CreateReactionDTO(
@@ -268,7 +268,8 @@ final class SupabaseManager: ObservableObject {
             reactionType: "voice",
             content: nil,
             duration: Float(duration),
-            voicePath: voicePath
+            voicePath: voicePath,
+            waveformData: waveformData
         )
 
         try await client

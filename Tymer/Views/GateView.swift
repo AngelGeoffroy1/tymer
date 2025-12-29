@@ -725,7 +725,8 @@ struct PostCard: View {
             appState.addVoiceReaction(
                 to: moment,
                 duration: max(result.duration, recordingDuration),
-                audioData: result.audioData
+                audioData: result.audioData,
+                waveformData: result.waveform
             )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
@@ -808,13 +809,42 @@ struct ReactionRow: View {
         }
     }
 
-    // Génère des hauteurs de barres pseudo-aléatoires basées sur l'ID
+    // Génère des hauteurs de barres - utilise les vraies données si disponibles
     private func waveformHeights(count: Int) -> [CGFloat] {
+        // Si on a des vraies données de waveform, les utiliser
+        if let waveform = reaction.waveformData, !waveform.isEmpty {
+            // Resampler si nécessaire
+            if waveform.count == count {
+                return waveform.map { CGFloat($0) }
+            } else {
+                return resampleWaveform(waveform, to: count).map { CGFloat($0) }
+            }
+        }
+
+        // Fallback: génération pseudo-aléatoire basée sur l'ID
         let seed = reaction.id.hashValue
         return (0..<count).map { i in
             let value = abs(sin(Double(seed + i * 7) * 0.3))
-            return CGFloat(0.3 + value * 0.7) // Entre 0.3 et 1.0
+            return CGFloat(0.3 + value * 0.7)
         }
+    }
+
+    private func resampleWaveform(_ samples: [Float], to targetCount: Int) -> [Float] {
+        guard !samples.isEmpty else { return Array(repeating: 0.3, count: targetCount) }
+        guard samples.count > targetCount else { return samples }
+
+        let chunkSize = samples.count / targetCount
+        var result: [Float] = []
+
+        for i in 0..<targetCount {
+            let start = i * chunkSize
+            let end = min(start + chunkSize, samples.count)
+            let chunk = samples[start..<end]
+            let maxValue = chunk.max() ?? 0.3
+            result.append(max(0.15, maxValue))
+        }
+
+        return result
     }
 
     @ViewBuilder

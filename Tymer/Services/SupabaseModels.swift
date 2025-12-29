@@ -108,6 +108,7 @@ struct ReactionDTO: Codable, Identifiable {
     let content: String?
     let duration: Float?
     let voicePath: String?
+    let waveformData: [Float]?
     let createdAt: Date
 
     var profiles: Profile?
@@ -120,6 +121,7 @@ struct ReactionDTO: Codable, Identifiable {
         case content
         case duration
         case voicePath = "voice_path"
+        case waveformData = "waveform_data"
         case createdAt = "created_at"
         case profiles
     }
@@ -139,7 +141,8 @@ struct ReactionDTO: Codable, Identifiable {
             author: author,
             type: type,
             createdAt: createdAt,
-            voicePath: voicePath
+            voicePath: voicePath,
+            waveformData: waveformData
         )
     }
 }
@@ -151,6 +154,7 @@ struct CreateReactionDTO: Codable {
     let content: String?
     let duration: Float?
     var voicePath: String?
+    var waveformData: [Float]?
 
     enum CodingKeys: String, CodingKey {
         case momentId = "moment_id"
@@ -159,6 +163,7 @@ struct CreateReactionDTO: Codable {
         case content
         case duration
         case voicePath = "voice_path"
+        case waveformData = "waveform_data"
     }
 }
 

@@ -48,6 +48,8 @@ final class AppState {
     var audioRecorder: AVAudioRecorder?
     var audioRecorderURL: URL?  // URL du fichier audio enregistré
     var isRecording: Bool = false
+    private var meteringTimer: Timer?
+    private var recordedWaveform: [Float] = []  // Niveaux capturés pendant l'enregistrement
 
     // MARK: Audio Playback
     var audioPlayer: AVAudioPlayer?
@@ -471,12 +473,13 @@ final class AppState {
         }
     }
 
-    func addVoiceReaction(to moment: Moment, duration: TimeInterval, audioData: Data? = nil) {
+    func addVoiceReaction(to moment: Moment, duration: TimeInterval, audioData: Data? = nil, waveformData: [Float]? = nil) {
         let reactionId = UUID()
         let reaction = Reaction(
             id: reactionId,
             author: currentUser,
-            type: .voice(duration: min(duration, 3))
+            type: .voice(duration: min(duration, 3)),
+            waveformData: waveformData
         )
 
         // Update local state immediately
@@ -491,14 +494,15 @@ final class AppState {
             Task { @MainActor in
                 do {
                     let voicePath = try await supabase.uploadVoiceReaction(data)
-                    try await supabase.addVoiceReaction(to: moment.id, duration: min(duration, 3), voicePath: voicePath)
+                    try await supabase.addVoiceReaction(to: moment.id, duration: min(duration, 3), voicePath: voicePath, waveformData: waveformData)
 
                     // Mettre à jour la réaction locale avec le voicePath
                     let updatedReaction = Reaction(
                         id: reactionId,
                         author: currentUser,
                         type: .voice(duration: min(duration, 3)),
-                        voicePath: voicePath
+                        voicePath: voicePath,
+                        waveformData: waveformData
                     )
 
                     if let myMoment = myTodayMoment, myMoment.id == moment.id {
@@ -539,9 +543,22 @@ final class AppState {
             ]
 
             audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
-            audioRecorderURL = audioFilename  // Sauvegarder l'URL
+            audioRecorder?.isMeteringEnabled = true  // Activer le metering
+            audioRecorderURL = audioFilename
+            recordedWaveform = []  // Reset waveform
+
             audioRecorder?.record()
             isRecording = true
+
+            // Timer pour capturer les niveaux audio (20 samples par seconde)
+            meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                guard let self = self, let recorder = self.audioRecorder, recorder.isRecording else { return }
+                recorder.updateMeters()
+                let level = recorder.averagePower(forChannel: 0)
+                // Normaliser: -160 dB (silence) à 0 dB (max) -> 0.0 à 1.0
+                let normalizedLevel = max(0, (level + 50) / 50)  // -50 dB à 0 dB
+                self.recordedWaveform.append(normalizedLevel)
+            }
 
             // Haptic feedback
             let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -552,9 +569,12 @@ final class AppState {
         }
     }
 
-    /// Arrête l'enregistrement et retourne (durée, données audio)
-    func stopVoiceRecording() -> (duration: TimeInterval, audioData: Data?) {
-        guard let recorder = audioRecorder, isRecording else { return (0, nil) }
+    /// Arrête l'enregistrement et retourne (durée, données audio, waveform)
+    func stopVoiceRecording() -> (duration: TimeInterval, audioData: Data?, waveform: [Float]) {
+        meteringTimer?.invalidate()
+        meteringTimer = nil
+
+        guard let recorder = audioRecorder, isRecording else { return (0, nil, []) }
 
         let duration = recorder.currentTime
         recorder.stop()
@@ -568,14 +588,38 @@ final class AppState {
             try? FileManager.default.removeItem(at: url)
         }
 
+        // Réduire le waveform à ~20 barres pour l'affichage
+        let waveform = resampleWaveform(recordedWaveform, to: 24)
+
         audioRecorder = nil
         audioRecorderURL = nil
+        recordedWaveform = []
 
         // Haptic feedback
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
 
-        return (min(duration, 3), audioData)
+        return (min(duration, 3), audioData, waveform)
+    }
+
+    /// Réduit un tableau de samples à un nombre cible de barres
+    private func resampleWaveform(_ samples: [Float], to targetCount: Int) -> [Float] {
+        guard !samples.isEmpty else { return Array(repeating: 0.3, count: targetCount) }
+        guard samples.count > targetCount else { return samples }
+
+        let chunkSize = samples.count / targetCount
+        var result: [Float] = []
+
+        for i in 0..<targetCount {
+            let start = i * chunkSize
+            let end = min(start + chunkSize, samples.count)
+            let chunk = samples[start..<end]
+            // Prendre le max du chunk pour un effet plus dynamique
+            let maxValue = chunk.max() ?? 0.3
+            result.append(max(0.15, maxValue))  // Minimum 0.15 pour visibilité
+        }
+
+        return result
     }
 
     // MARK: - Audio Playback
