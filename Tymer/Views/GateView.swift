@@ -759,14 +759,22 @@ struct ReactionRow: View {
         isPlaying ? appState.audioPlaybackProgress : 0
     }
 
+    private var isVoice: Bool {
+        if case .voice = reaction.type { return true }
+        return false
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             FriendAvatar(reaction.author, size: 28)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(reaction.author.firstName)
-                    .font(.funnelSemiBold(12))
-                    .foregroundColor(.tymerWhite)
+                // Masquer le nom pour les réactions vocales
+                if !isVoice {
+                    Text(reaction.author.firstName)
+                        .font(.funnelSemiBold(12))
+                        .foregroundColor(.tymerWhite)
+                }
 
                 reactionContent
             }
@@ -800,43 +808,51 @@ struct ReactionRow: View {
         }
     }
 
+    // Génère des hauteurs de barres pseudo-aléatoires basées sur l'ID
+    private func waveformHeights(count: Int) -> [CGFloat] {
+        let seed = reaction.id.hashValue
+        return (0..<count).map { i in
+            let value = abs(sin(Double(seed + i * 7) * 0.3))
+            return CGFloat(0.3 + value * 0.7) // Entre 0.3 et 1.0
+        }
+    }
+
     @ViewBuilder
     private func voiceReactionView(duration: TimeInterval) -> some View {
-        // Largeur proportionnelle à la durée (min 80, max 160 pour 3s)
-        let baseWidth: CGFloat = 80
+        // Largeur proportionnelle à la durée (min 100, max 180 pour 3s)
+        let baseWidth: CGFloat = 100
         let maxExtraWidth: CGFloat = 80
         let durationRatio = min(duration / 3.0, 1.0)
         let totalWidth = baseWidth + (maxExtraWidth * durationRatio)
 
-        HStack(spacing: 6) {
-            // Bouton play/stop
+        // Nombre de barres proportionnel à la largeur
+        let barCount = Int(12 + (12 * durationRatio))
+        let heights = waveformHeights(count: barCount)
+
+        HStack(spacing: 5) {
+            // Bouton play/pause
             if isLoading {
                 ProgressView()
                     .scaleEffect(0.6)
                     .tint(.tymerWhite)
-                    .frame(width: 16, height: 16)
+                    .frame(width: 18, height: 18)
             } else {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .foregroundColor(.tymerWhite)
-                    .frame(width: 16, height: 16)
+                    .frame(width: 18, height: 18)
             }
 
-            // Barre de progression style Instagram
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    // Fond de la barre
-                    Capsule()
-                        .fill(Color.tymerWhite.opacity(0.3))
-                        .frame(height: 3)
+            // Waveform style Instagram
+            HStack(spacing: 2) {
+                ForEach(0..<barCount, id: \.self) { index in
+                    let barProgress = Double(index) / Double(barCount)
+                    let isPlayed = progress > barProgress
 
-                    // Progression
-                    Capsule()
-                        .fill(Color.tymerWhite)
-                        .frame(width: geo.size.width * progress, height: 3)
-                        .animation(.linear(duration: 0.05), value: progress)
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(isPlayed ? Color.tymerWhite : Color.tymerWhite.opacity(0.4))
+                        .frame(width: 2, height: 16 * heights[index])
                 }
-                .frame(maxHeight: .infinity, alignment: .center)
             }
             .frame(height: 20)
 
@@ -846,20 +862,12 @@ struct ReactionRow: View {
                 .foregroundColor(.tymerWhite.opacity(0.8))
                 .frame(width: 18, alignment: .trailing)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(width: totalWidth)
         .background(
             Capsule()
-                .fill(
-                    LinearGradient(
-                        colors: isPlaying
-                            ? [Color.blue, Color.purple.opacity(0.8)]
-                            : [Color.tymerDarkGray.opacity(0.8), Color.tymerDarkGray.opacity(0.6)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .fill(isPlaying ? Color.tymerDarkGray : Color.tymerDarkGray.opacity(0.6))
         )
     }
 
