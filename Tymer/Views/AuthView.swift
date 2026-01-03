@@ -70,7 +70,7 @@ struct AuthView: View {
             appState.hasCompletedOnboarding = false
             appState.navigate(to: .onboarding)
         } label: {
-            Text("🛠 Onboarding")
+            Text("Onboarding")
                 .font(.funnelLight(11))
                 .foregroundColor(.tymerDarkGray.opacity(0.5))
         }
@@ -89,7 +89,7 @@ struct AuthView: View {
     // MARK: - Title Section
 
     private var titleSection: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(isSignUp ? "Créer un compte" : "Connexion")
                 .font(.funnelSemiBold(28))
                 .foregroundColor(.tymerWhite)
@@ -98,6 +98,7 @@ struct AuthView: View {
                 .font(.funnelLight(15))
                 .foregroundColor(.tymerGray)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Form Section
@@ -220,8 +221,7 @@ struct AuthView: View {
                 try await supabase.signUp(
                     email: email,
                     password: password,
-                    firstName: firstName,
-                    avatarColor: "gray"  // Default color
+                    firstName: firstName
                 )
             } else {
                 try await supabase.signIn(email: email, password: password)
@@ -247,7 +247,7 @@ struct AuthView: View {
     }
 }
 
-// MARK: - Custom TextField
+// MARK: - Custom TextField with Underline Style
 
 struct CustomTextField: View {
     let placeholder: String
@@ -256,36 +256,56 @@ struct CustomTextField: View {
     var isSecure: Bool = false
     var keyboardType: UIKeyboardType = .default
     var autocapitalization: TextInputAutocapitalization = .sentences
+    
+    @FocusState private var isFocused: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            if let icon = icon {
-                Image(systemName: icon)
-                    .foregroundColor(.tymerGray)
-                    .frame(width: 20)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 14) {
+                // Icon
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundColor(isFocused ? .tymerWhite : .tymerGray)
+                        .frame(width: 24)
+                        .animation(.easeInOut(duration: 0.25), value: isFocused)
+                }
 
-            if isSecure {
-                SecureField(placeholder, text: $text)
-                    .textContentType(.password)
-                    .font(.funnelLight(16))
-            } else {
-                TextField(placeholder, text: $text)
-                    .keyboardType(keyboardType)
-                    .textInputAutocapitalization(autocapitalization)
-                    .autocorrectionDisabled()
-                    .font(.funnelLight(16))
+                // Text field
+                if isSecure {
+                    SecureField(placeholder, text: $text)
+                        .textContentType(.password)
+                        .font(.funnelLight(17))
+                        .focused($isFocused)
+                } else {
+                    TextField(placeholder, text: $text)
+                        .keyboardType(keyboardType)
+                        .textInputAutocapitalization(autocapitalization)
+                        .autocorrectionDisabled()
+                        .font(.funnelLight(17))
+                        .focused($isFocused)
+                }
             }
+            .foregroundColor(.tymerWhite)
+            .padding(.bottom, 12)
+            
+            // Animated underline
+            ZStack(alignment: .leading) {
+                // Background line (always visible, subtle)
+                Rectangle()
+                    .fill(Color.tymerGray.opacity(0.3))
+                    .frame(height: 1)
+                
+                // Animated foreground line (expands from left on focus)
+                Rectangle()
+                    .fill(Color.tymerWhite)
+                    .frame(width: isFocused ? .infinity : 0, height: 2)
+                    .frame(maxWidth: isFocused ? .infinity : 0)
+                    .animation(.easeInOut(duration: 0.3), value: isFocused)
+            }
+            .frame(height: 2)
         }
-        .padding(.horizontal, 16)
-        .frame(height: 54)
-        .background(Color.tymerWhite.opacity(0.1))
-        .foregroundColor(.tymerWhite)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.tymerWhite.opacity(0.2), lineWidth: 1)
-        )
+        .padding(.vertical, 8)
     }
 }
 

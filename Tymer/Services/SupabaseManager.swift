@@ -58,7 +58,7 @@ final class SupabaseManager: ObservableObject {
 
     // MARK: - Auth Methods
 
-    func signUp(email: String, password: String, firstName: String, avatarColor: String) async throws {
+    func signUp(email: String, password: String, firstName: String) async throws {
         isLoading = true
         errorMessage = nil
 
@@ -69,8 +69,7 @@ final class SupabaseManager: ObservableObject {
                 email: email,
                 password: password,
                 data: [
-                    "first_name": .string(firstName),
-                    "avatar_color": .string(avatarColor)
+                    "first_name": .string(firstName)
                 ]
             )
 
@@ -153,12 +152,11 @@ final class SupabaseManager: ObservableObject {
         }
     }
 
-    func updateProfile(firstName: String? = nil, avatarColor: String? = nil) async throws {
+    func updateProfile(firstName: String? = nil) async throws {
         guard let userId = userId else { return }
 
         var updates: [String: AnyJSON] = [:]
         if let firstName = firstName { updates["first_name"] = .string(firstName) }
-        if let avatarColor = avatarColor { updates["avatar_color"] = .string(avatarColor) }
 
         try await client
             .from("profiles")

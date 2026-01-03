@@ -13,7 +13,6 @@ import SwiftUI
 struct Profile: Codable, Identifiable, Equatable {
     let id: UUID
     let firstName: String
-    let avatarColor: String
     let avatarUrl: String?
     let createdAt: Date
     let updatedAt: Date
@@ -21,14 +20,17 @@ struct Profile: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id
         case firstName = "first_name"
-        case avatarColor = "avatar_color"
         case avatarUrl = "avatar_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
 
+    /// Generate a consistent color based on the user's ID
     var displayColor: Color {
-        Color.fromString(avatarColor)
+        let colors: [Color] = [.red, .blue, .green, .orange, .purple, .pink, .cyan, .yellow, .mint, .indigo, .teal]
+        let hashValue = id.uuidString.hashValue
+        let index = abs(hashValue) % colors.count
+        return colors[index]
     }
 
     var initials: String {

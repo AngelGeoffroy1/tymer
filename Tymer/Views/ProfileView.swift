@@ -15,6 +15,7 @@ struct ProfileView: View {
 
     @State private var cardsAppeared = false
     @State private var showEditProfile = false
+    @State private var showSettings = false
     @State private var showImagePicker = false
     @State private var selectedImage: UIImage?
     @State private var isUploadingAvatar = false
@@ -79,6 +80,9 @@ struct ProfileView: View {
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(image: $selectedImage)
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
         .onChange(of: selectedImage) { _, newImage in
             if let image = newImage {
                 Task {
@@ -116,11 +120,11 @@ struct ProfileView: View {
                 Text("Mon Profil")
                     .font(.tymerSubheadline)
                     .foregroundColor(.tymerWhite)
-
+                
                 Button {
-                    showEditProfile = true
+                    showSettings = true
                 } label: {
-                    Image(systemName: "pencil")
+                    Image(systemName: "gearshape.fill")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.tymerWhite)
                         .frame(width: 32, height: 32)
@@ -175,9 +179,22 @@ struct ProfileView: View {
 
                 // User Info
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(supabase.currentProfile?.firstName ?? appState.currentUser.firstName)
-                        .font(.funnelSemiBold(24))
-                        .foregroundColor(.tymerWhite)
+                    HStack(spacing: 10) {
+                        Text(supabase.currentProfile?.firstName ?? appState.currentUser.firstName)
+                            .font(.funnelSemiBold(24))
+                            .foregroundColor(.tymerWhite)
+                        
+                        Button {
+                            showEditProfile = true
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.tymerWhite)
+                                .frame(width: 26, height: 26)
+                                .background(Color.tymerDarkGray.opacity(0.6))
+                                .clipShape(Circle())
+                        }
+                    }
 
                     if let email = supabase.currentSession?.user.email {
                         Text(email)
@@ -444,7 +461,6 @@ struct EditProfileSheet: View {
 
     @State private var firstName: String = ""
     @State private var isSaving = false
-    @StateObject private var notificationManager = NotificationManager.shared
 
     var body: some View {
         NavigationStack {
@@ -542,11 +558,6 @@ struct EditProfileSheet: View {
                         }
                         .padding(.horizontal, 20)
 
-                        // Notifications Section
-                        notificationsSection
-                            .padding(.horizontal, 20)
-                            .padding(.top, 12)
-
                         Spacer(minLength: 40)
                     }
                 }
@@ -586,93 +597,6 @@ struct EditProfileSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-    }
-
-    // MARK: - Notifications Section
-
-    private var notificationsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Notifications")
-                .font(.funnelLight(12))
-                .foregroundColor(.tymerGray)
-
-            VStack(spacing: 0) {
-                // Notification toggle row
-                HStack {
-                    HStack(spacing: 12) {
-                        Image(systemName: "bell.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(notificationManager.isAuthorized ? .green : .tymerGray)
-                            .frame(width: 24)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Fenêtres horaires")
-                                .font(.funnelSemiBold(15))
-                                .foregroundColor(.tymerWhite)
-
-                            Text(notificationStatusText)
-                                .font(.funnelLight(12))
-                                .foregroundColor(.tymerGray)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Status indicator or settings button
-                    if notificationManager.authorizationStatus == .denied {
-                        Button {
-                            notificationManager.openSettings()
-                        } label: {
-                            Text("Paramètres")
-                                .font(.funnelLight(12))
-                                .foregroundColor(.tymerWhite)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.tymerDarkGray)
-                                .cornerRadius(8)
-                        }
-                    } else if notificationManager.authorizationStatus == .notDetermined {
-                        Button {
-                            Task {
-                                _ = await notificationManager.requestAuthorization()
-                            }
-                        } label: {
-                            Text("Activer")
-                                .font(.funnelLight(12))
-                                .foregroundColor(.tymerBlack)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.tymerWhite)
-                                .cornerRadius(8)
-                        }
-                    } else {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.green)
-                    }
-                }
-                .padding(16)
-            }
-            .background(Color.tymerDarkGray.opacity(0.3))
-            .cornerRadius(12)
-        }
-    }
-
-    private var notificationStatusText: String {
-        switch notificationManager.authorizationStatus {
-        case .authorized:
-            return "Tu recevras une notification à l'ouverture de chaque fenêtre"
-        case .denied:
-            return "Notifications désactivées dans les paramètres"
-        case .notDetermined:
-            return "Active les notifications pour ne rien manquer"
-        case .provisional:
-            return "Notifications en mode silencieux"
-        case .ephemeral:
-            return "Notifications temporaires activées"
-        @unknown default:
-            return "Statut inconnu"
-        }
     }
 
     private var avatarPlaceholder: some View {
