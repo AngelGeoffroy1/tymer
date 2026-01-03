@@ -28,6 +28,7 @@ private struct ScrollOffsetModifier: ViewModifier {
 
 struct GateView: View {
     @Environment(AppState.self) private var appState
+    @StateObject private var supabase = SupabaseManager.shared
 
     @State private var headerVisible: Bool = true
     @State private var scrollStartY: CGFloat = 0
@@ -115,8 +116,26 @@ struct GateView: View {
                 }
             }) {
                 VStack(spacing: 2) {
-                    Image(systemName: "person.circle")
-                        .font(.system(size: 16))
+                    // Afficher l'avatar image si disponible, sinon l'icône
+                    if let profile = supabase.currentProfile {
+                        let user = profile.toUser()
+                        if user.avatarUrl != nil {
+                            FriendAvatar(user, size: 24)
+                        } else {
+                            // Fallback: initiales colorées
+                            Circle()
+                                .fill(profile.displayColor.opacity(0.3))
+                                .frame(width: 24, height: 24)
+                                .overlay(
+                                    Text(profile.initials)
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.tymerWhite)
+                                )
+                        }
+                    } else {
+                        Image(systemName: "person.circle")
+                            .font(.system(size: 16))
+                    }
                     Text("Profil")
                         .font(.funnelLight(10))
                 }

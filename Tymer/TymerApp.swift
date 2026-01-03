@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct TymerApp: App {
     @State private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -25,6 +26,32 @@ struct TymerApp: App {
             .onOpenURL { url in
                 appState.handleDeepLink(url)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .didTapCaptureNotification)) { _ in
+                // Navigate to capture screen when notification is tapped
+                handleCaptureNotification()
+            }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                if newPhase == .active {
+                    // Clear badge when app becomes active
+                    Task { @MainActor in
+                        appState.clearNotificationBadge()
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Handle navigation from capture notification
+    private func handleCaptureNotification() {
+        // Only navigate to capture if window is open and user hasn't posted
+        if appState.isWindowOpen && !appState.hasPostedToday {
+            appState.navigate(to: .capture)
+        } else if appState.isWindowOpen && appState.hasPostedToday {
+            // Window is open but already posted - go to feed
+            appState.navigate(to: .feed)
+        } else {
+            // Window not open - go to gate
+            appState.navigate(to: .gate)
         }
     }
 }

@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import AVFoundation
+import UserNotifications
 
 // MARK: - App State
 @Observable
@@ -67,6 +68,7 @@ final class AppState {
 
     private var timer: Timer?
     private let supabase = SupabaseManager.shared
+    private let notificationManager = NotificationManager.shared
 
     // MARK: - Initialization
     init() {
@@ -130,6 +132,8 @@ final class AppState {
             let windowDTOs = try await supabase.fetchWindows()
             timeWindows = windowDTOs.map { $0.toTimeWindow() }
             updateTimeWindowStatus()
+            // Schedule notifications for loaded windows
+            await scheduleWindowNotifications()
         } catch {
             // Ignore cancellation errors, preserve existing data
             guard !isCancellationError(error) else { return }
@@ -139,7 +143,40 @@ final class AppState {
                 timeWindows = TimeWindow.defaultWindows
             }
             updateTimeWindowStatus()
+            // Schedule notifications for default windows
+            await scheduleWindowNotifications()
         }
+    }
+
+    // MARK: - Notifications
+
+    /// Request notification permission and schedule notifications
+    @MainActor
+    func requestNotificationPermission() async -> Bool {
+        return await notificationManager.requestAuthorization()
+    }
+
+    /// Schedule notifications for all time windows
+    @MainActor
+    private func scheduleWindowNotifications() async {
+        // Request permission if not already granted
+        if !notificationManager.isAuthorized {
+            let granted = await notificationManager.requestAuthorization()
+            guard granted else {
+                print("📬 Notifications not authorized, skipping scheduling")
+                return
+            }
+        }
+
+        // Schedule notifications for all windows
+        let windows = timeWindows.isEmpty ? TimeWindow.defaultWindows : timeWindows
+        notificationManager.scheduleWindowNotifications(windows)
+    }
+
+    /// Clear notification badge when app becomes active
+    @MainActor
+    func clearNotificationBadge() {
+        notificationManager.clearBadge()
     }
 
     @MainActor

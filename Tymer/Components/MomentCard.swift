@@ -65,6 +65,7 @@ struct SupabaseImage: View {
 
     @State private var loadedImage: UIImage?
     @State private var isLoading = true
+    @State private var imageBlurRadius: CGFloat = 15
 
     var body: some View {
         Group {
@@ -74,7 +75,7 @@ struct SupabaseImage: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(height: height)
                     .clipped()
-                    .blur(radius: blurRadius)
+                    .blur(radius: blurRadius > 0 ? blurRadius : imageBlurRadius)
             } else if isLoading {
                 Rectangle()
                     .fill(Color.tymerDarkGray.opacity(0.3))
@@ -82,6 +83,7 @@ struct SupabaseImage: View {
                     .overlay(
                         ProgressView()
                             .tint(.tymerGray)
+                            .scaleEffect(0.8)
                     )
             } else {
                 Rectangle()
@@ -89,23 +91,59 @@ struct SupabaseImage: View {
                     .frame(height: height)
             }
         }
+        .onAppear {
+            loadImageFromCache()
+        }
         .task {
-            await loadImage()
+            await loadImageIfNeeded()
         }
     }
 
-    private func loadImage() async {
-        guard let url = PhotoLoader.supabaseImageURL(for: path) else {
+    /// Check cache synchronously on appear for instant display
+    private func loadImageFromCache() {
+        if let cachedImage = ImageCache.shared.get(forKey: path) {
+            loadedImage = cachedImage
             isLoading = false
+            imageBlurRadius = 0
+        }
+    }
+
+    private func loadImageIfNeeded() async {
+        // Skip if already loaded from cache
+        guard loadedImage == nil else { return }
+        
+        // Check cache again (in case it was loaded between onAppear and task)
+        if let cachedImage = ImageCache.shared.get(forKey: path) {
+            await MainActor.run {
+                loadedImage = cachedImage
+                isLoading = false
+                withAnimation(.easeOut(duration: 0.2)) {
+                    imageBlurRadius = 0
+                }
+            }
+            return
+        }
+
+        guard let url = PhotoLoader.supabaseImageURL(for: path) else {
+            await MainActor.run {
+                isLoading = false
+            }
             return
         }
 
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             if let image = UIImage(data: data) {
+                // Cache the image for future use
+                ImageCache.shared.set(image, forKey: path)
+                
                 await MainActor.run {
                     loadedImage = image
                     isLoading = false
+                    // Animate blur removal for smooth reveal
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        imageBlurRadius = 0
+                    }
                 }
             } else {
                 await MainActor.run {
