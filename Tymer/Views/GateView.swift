@@ -450,6 +450,55 @@ struct PostCard: View {
     @State private var showMomentMenu = false
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
+    
+    // MARK: - Shake & Toast States
+    @State private var shakeOffset: CGFloat = 0
+    @State private var showLockedToast = false
+    
+    // MARK: - Progressive Blur Calculation
+    /// Calculate blur radius based on time remaining until window opens
+    /// Maximum blur at 24h+ before, decreases linearly to 0 at window open
+    private var progressiveBlurRadius: CGFloat {
+        guard isBlurred else { return 0 }
+        
+        let remainingSeconds = appState.nextWindowRemainingSeconds
+        
+        // Max blur duration: 6 hours (21600 seconds) before window
+        // Blur goes from 30 (max) to 8 (min visible blur) over this period
+        let maxBlurDuration: TimeInterval = 6 * 60 * 60  // 6 hours
+        let maxBlur: CGFloat = 30
+        let minBlur: CGFloat = 8  // Still visibly blurred but teasing
+        
+        if remainingSeconds >= maxBlurDuration {
+            return maxBlur
+        } else if remainingSeconds <= 0 {
+            return 0
+        } else {
+            // Linear interpolation: more time = more blur
+            let progress = remainingSeconds / maxBlurDuration
+            return minBlur + (maxBlur - minBlur) * CGFloat(progress)
+        }
+    }
+    
+    /// Display text for next window opening time
+    private var nextWindowTimeText: String {
+        let windows = appState.timeWindows.isEmpty ? TimeWindow.defaultWindows : appState.timeWindows
+        let sortedWindows = windows.sorted { $0.start < $1.start }
+        let calendar = Calendar.current
+        let currentHour = calendar.component(.hour, from: Date())
+        
+        // Find next window
+        for window in sortedWindows {
+            if currentHour < window.start {
+                return String(format: "%02d:00", window.start)
+            }
+        }
+        // Tomorrow's first window
+        if let first = sortedWindows.first {
+            return "demain à \(String(format: "%02d:00", first.start))"
+        }
+        return "bientôt"
+    }
 
     private var windowDisplayText: String {
         let windows = appState.timeWindows.isEmpty ? TimeWindow.defaultWindows : appState.timeWindows
@@ -462,7 +511,7 @@ struct PostCard: View {
             patternType: abs(moment.id.hashValue) % 4
         )
         .frame(height: 400)
-        .blur(radius: isBlurred ? 30 : 0)
+        .blur(radius: progressiveBlurRadius)
         .allowsHitTesting(false)
     }
 
@@ -558,7 +607,7 @@ struct PostCard: View {
             if let imagePath = moment.imageName {
                 // Check if it's a Supabase path or local
                 if PhotoLoader.isSupabasePath(imagePath) {
-                    SupabaseImage(path: imagePath, height: 400, blurRadius: isBlurred ? 30 : 0)
+                    SupabaseImage(path: imagePath, height: 400, blurRadius: progressiveBlurRadius)
                         .allowsHitTesting(false)
                 } else if let uiImage = PhotoLoader.loadImage(named: imagePath) {
                     Image(uiImage: uiImage)
@@ -566,7 +615,7 @@ struct PostCard: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(height: 400)
                         .clipped()
-                        .blur(radius: isBlurred ? 30 : 0)
+                        .blur(radius: progressiveBlurRadius)
                         .allowsHitTesting(false)
                 } else {
                     placeholderPattern
@@ -575,29 +624,118 @@ struct PostCard: View {
                 placeholderPattern
             }
 
+            // Blurred overlay with lock info
             if isBlurred {
                 VStack(spacing: 12) {
-                    Image(systemName: "eye.slash.fill")
+                    // Lock icon with pulse animation when blur is low
+                    Image(systemName: progressiveBlurRadius < 15 ? "lock.open.fill" : "lock.fill")
                         .font(.system(size: 28))
                         .foregroundColor(.tymerWhite)
-                    Text("Visible pendant la fenêtre")
-                        .font(.funnelSemiBold(13))
-                        .foregroundColor(.tymerWhite)
-                    Text(windowDisplayText)
-                        .font(.funnelLight(11))
-                        .foregroundColor(.tymerGray)
+                        .symbolEffect(.pulse, options: .repeating, value: progressiveBlurRadius < 15)
+                    
+                    // "Visible dans" + countdown
+                    HStack(spacing: 6) {
+                        Text("Visible dans")
+                            .font(.funnelSemiBold(14))
+                            .foregroundColor(.tymerWhite)
+                        
+                        AnimatedCountdownTimer(
+                            remainingSeconds: appState.nextWindowRemainingSeconds,
+                            style: .prominent
+                        )
+                    }
                 }
-                .padding(20)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.black.opacity(0.5))
-                )
                 .allowsHitTesting(false)
+            }
+            
+            // Toast message overlay
+            if showLockedToast {
+                VStack {
+                    Spacer()
+                    
+                    HStack(spacing: 6) {
+                        Text("Patience ! Rendez-vous dans")
+                            .font(.funnelSemiBold(13))
+                        AnimatedCountdownTimer(
+                            remainingSeconds: appState.nextWindowRemainingSeconds,
+                            style: .prominent
+                        )
+                    }
+                    .foregroundColor(.tymerWhite)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(
+                        Capsule()
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.95)
+                    )
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)),
+                            removal: .opacity.combined(with: .scale(scale: 0.95))
+                        )
+                    )
+                    .padding(.bottom, 20)
+                }
             }
         }
         .frame(height: 400)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .contentShape(RoundedRectangle(cornerRadius: 16)) // Zone de hit limitée au rectangle visible
+        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .offset(x: shakeOffset)
+        .onTapGesture {
+            if isBlurred {
+                triggerLockedInteraction()
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: progressiveBlurRadius)
+    }
+    
+    // MARK: - Locked Interaction
+    private func triggerLockedInteraction() {
+        // Haptic feedback
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+        
+        // Fluid shake animation using spring physics
+        Task { @MainActor in
+            // Quick shake sequence with spring damping
+            withAnimation(.spring(response: 0.1, dampingFraction: 0.3, blendDuration: 0)) {
+                shakeOffset = 12
+            }
+            try? await Task.sleep(nanoseconds: 60_000_000) // 60ms
+            
+            withAnimation(.spring(response: 0.1, dampingFraction: 0.3, blendDuration: 0)) {
+                shakeOffset = -10
+            }
+            try? await Task.sleep(nanoseconds: 60_000_000)
+            
+            withAnimation(.spring(response: 0.1, dampingFraction: 0.4, blendDuration: 0)) {
+                shakeOffset = 6
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            
+            withAnimation(.spring(response: 0.1, dampingFraction: 0.5, blendDuration: 0)) {
+                shakeOffset = -4
+            }
+            try? await Task.sleep(nanoseconds: 40_000_000)
+            
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.7, blendDuration: 0)) {
+                shakeOffset = 0
+            }
+        }
+        
+        // Show toast
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            showLockedToast = true
+        }
+        
+        // Hide toast after 2.5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showLockedToast = false
+            }
+        }
     }
     
     private var actionsSection: some View {
@@ -972,6 +1110,12 @@ struct ReactionRow: View {
 // MARK: - Animated Countdown Timer Component
 struct AnimatedCountdownTimer: View {
     let remainingSeconds: TimeInterval
+    var style: CountdownStyle = .subtle
+    
+    enum CountdownStyle {
+        case subtle      // Original gray style for header
+        case prominent   // White, matches "Visible dans" text
+    }
     
     private var hours: Int {
         Int(remainingSeconds) / 3600
@@ -985,27 +1129,55 @@ struct AnimatedCountdownTimer: View {
         Int(remainingSeconds) % 60
     }
     
+    private var textColor: Color {
+        switch style {
+        case .subtle: return .tymerDarkGray
+        case .prominent: return .tymerWhite
+        }
+    }
+    
+    private var fontSize: CGFloat {
+        switch style {
+        case .subtle: return 11
+        case .prominent: return 14
+        }
+    }
+    
+    private var digitWidth: CGFloat {
+        switch style {
+        case .subtle: return 7
+        case .prominent: return 9
+        }
+    }
+    
+    private var digitHeight: CGFloat {
+        switch style {
+        case .subtle: return 14
+        case .prominent: return 18
+        }
+    }
+    
     var body: some View {
         HStack(spacing: 0) {
             // Hours
-            AnimatedDigit(value: hours / 10)
-            AnimatedDigit(value: hours % 10)
+            AnimatedDigit(value: hours / 10, fontSize: fontSize, color: textColor, width: digitWidth, height: digitHeight)
+            AnimatedDigit(value: hours % 10, fontSize: fontSize, color: textColor, width: digitWidth, height: digitHeight)
             
             Text(":")
-                .font(.funnelLight(11))
-                .foregroundColor(.tymerDarkGray)
+                .font(.funnelSemiBold(fontSize))
+                .foregroundColor(textColor)
             
             // Minutes
-            AnimatedDigit(value: minutes / 10)
-            AnimatedDigit(value: minutes % 10)
+            AnimatedDigit(value: minutes / 10, fontSize: fontSize, color: textColor, width: digitWidth, height: digitHeight)
+            AnimatedDigit(value: minutes % 10, fontSize: fontSize, color: textColor, width: digitWidth, height: digitHeight)
             
             Text(":")
-                .font(.funnelLight(11))
-                .foregroundColor(.tymerDarkGray)
+                .font(.funnelSemiBold(fontSize))
+                .foregroundColor(textColor)
             
             // Seconds
-            AnimatedDigit(value: seconds / 10)
-            AnimatedDigit(value: seconds % 10)
+            AnimatedDigit(value: seconds / 10, fontSize: fontSize, color: textColor, width: digitWidth, height: digitHeight)
+            AnimatedDigit(value: seconds % 10, fontSize: fontSize, color: textColor, width: digitWidth, height: digitHeight)
         }
     }
 }
@@ -1013,6 +1185,10 @@ struct AnimatedCountdownTimer: View {
 // MARK: - Single Animated Digit
 struct AnimatedDigit: View {
     let value: Int
+    var fontSize: CGFloat = 11
+    var color: Color = .tymerDarkGray
+    var width: CGFloat = 7
+    var height: CGFloat = 14
     
     var body: some View {
         GeometryReader { geometry in
@@ -1021,15 +1197,15 @@ struct AnimatedDigit: View {
             VStack(spacing: 0) {
                 ForEach(0..<10, id: \.self) { digit in
                     Text("\(digit)")
-                        .font(.funnelLight(11))
-                        .foregroundColor(.tymerDarkGray)
+                        .font(.funnelSemiBold(fontSize))
+                        .foregroundColor(color)
                         .frame(height: digitHeight)
                 }
             }
             .offset(y: -CGFloat(value) * digitHeight)
             .animation(.easeInOut(duration: 0.3), value: value)
         }
-        .frame(width: 7, height: 14)
+        .frame(width: width, height: height)
         .clipped()
     }
 }

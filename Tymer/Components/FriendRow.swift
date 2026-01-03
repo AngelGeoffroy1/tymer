@@ -135,6 +135,10 @@ struct CircleOrbitRing: View {
     private let ringSize: CGFloat = 200
     private let avatarSize: CGFloat = 36
     private let strokeWidth: CGFloat = 3
+    
+    // Animation states
+    @State private var rotationAngle: Double = 0
+    @State private var avatarsAppeared: Bool = false
 
     private var progress: CGFloat {
         CGFloat(friends.count) / CGFloat(maxSlots)
@@ -163,6 +167,7 @@ struct CircleOrbitRing: View {
                 )
                 .blur(radius: 10)
                 .frame(width: ringSize, height: ringSize)
+                .rotationEffect(.degrees(rotationAngle))
 
             // Background ring (empty slots)
             Circle()
@@ -171,6 +176,7 @@ struct CircleOrbitRing: View {
                     style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, dash: [4, 8])
                 )
                 .frame(width: ringSize, height: ringSize)
+                .rotationEffect(.degrees(rotationAngle * 0.5)) // Slower rotation for dashed ring
 
             // Progress ring (filled)
             Circle()
@@ -184,29 +190,20 @@ struct CircleOrbitRing: View {
                     style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                 )
                 .frame(width: ringSize, height: ringSize)
-                .rotationEffect(.degrees(-90))
+                .rotationEffect(.degrees(-90 + rotationAngle))
 
-            // Orbiting avatars
+            // Orbiting avatars with drop animation
             ForEach(Array(friends.enumerated()), id: \.element.id) { index, friend in
-                let angle = angleForIndex(index, total: friends.count)
+                let baseAngle = angleForIndex(index, total: friends.count)
+                let animatedAngle = baseAngle + CGFloat(rotationAngle * .pi / 180)
 
-                ZStack {
-                    // Avatar glow
-                    Circle()
-                        .fill(friend.avatarColor.opacity(0.4))
-                        .frame(width: avatarSize + 8, height: avatarSize + 8)
-                        .blur(radius: 6)
-
-                    // Avatar
-                    FriendAvatar(friend, size: avatarSize)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.tymerBlack, lineWidth: 2)
-                        )
-                }
-                .offset(
-                    x: cos(angle) * (ringSize / 2),
-                    y: sin(angle) * (ringSize / 2)
+                OrbitingAvatar(
+                    friend: friend,
+                    angle: animatedAngle,
+                    ringSize: ringSize,
+                    avatarSize: avatarSize,
+                    delayIndex: index,
+                    hasAppeared: avatarsAppeared
                 )
             }
 
@@ -239,6 +236,17 @@ struct CircleOrbitRing: View {
             }
         }
         .frame(width: ringSize + avatarSize + 20, height: ringSize + avatarSize + 20)
+        .onAppear {
+            // Start slow rotation animation (1 turn / 30 seconds)
+            withAnimation(.linear(duration: 30).repeatForever(autoreverses: false)) {
+                rotationAngle = 360
+            }
+            
+            // Trigger avatar drop animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                avatarsAppeared = true
+            }
+        }
     }
 
     private func angleForIndex(_ index: Int, total: Int) -> CGFloat {
@@ -249,6 +257,65 @@ struct CircleOrbitRing: View {
 
         let step = totalAngle / CGFloat(total)
         return startAngle + step * CGFloat(index) + step / 2
+    }
+}
+
+// MARK: - Orbiting Avatar with Drop Animation
+private struct OrbitingAvatar: View {
+    let friend: User
+    let angle: CGFloat
+    let ringSize: CGFloat
+    let avatarSize: CGFloat
+    let delayIndex: Int
+    let hasAppeared: Bool
+    
+    @State private var isVisible: Bool = false
+    @State private var dropOffset: CGFloat = -50
+    @State private var scale: CGFloat = 0.3
+    @State private var opacity: Double = 0
+    
+    var body: some View {
+        ZStack {
+            // Avatar glow
+            Circle()
+                .fill(friend.avatarColor.opacity(0.4))
+                .frame(width: avatarSize + 8, height: avatarSize + 8)
+                .blur(radius: 6)
+
+            // Avatar
+            FriendAvatar(friend, size: avatarSize)
+                .overlay(
+                    Circle()
+                        .stroke(Color.tymerBlack, lineWidth: 2)
+                )
+        }
+        .scaleEffect(scale)
+        .opacity(opacity)
+        .offset(
+            x: cos(angle) * (ringSize / 2),
+            y: sin(angle) * (ringSize / 2) + (isVisible ? 0 : dropOffset)
+        )
+        .onChange(of: hasAppeared) { _, appeared in
+            if appeared {
+                // Staggered drop animation
+                let delay = Double(delayIndex) * 0.08
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(delay)) {
+                    isVisible = true
+                    dropOffset = 0
+                    scale = 1.0
+                    opacity = 1.0
+                }
+            }
+        }
+        .onAppear {
+            if hasAppeared {
+                // Already appeared, show immediately
+                isVisible = true
+                dropOffset = 0
+                scale = 1.0
+                opacity = 1.0
+            }
+        }
     }
 }
 
