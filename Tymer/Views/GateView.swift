@@ -168,9 +168,7 @@ struct GateView: View {
             Text("•")
                 .foregroundColor(.tymerDarkGray)
 
-            Text(appState.nextWindowCountdown)
-                .font(.funnelLight(11))
-                .foregroundColor(.tymerDarkGray)
+            AnimatedCountdownTimer(remainingSeconds: appState.nextWindowRemainingSeconds)
             
             Spacer()
         }
@@ -968,6 +966,71 @@ struct ReactionRow: View {
         formatter.unitsStyle = .abbreviated
         formatter.locale = Locale(identifier: "fr_FR")
         return formatter.localizedString(for: reaction.createdAt, relativeTo: Date())
+    }
+}
+
+// MARK: - Animated Countdown Timer Component
+struct AnimatedCountdownTimer: View {
+    let remainingSeconds: TimeInterval
+    
+    private var hours: Int {
+        Int(remainingSeconds) / 3600
+    }
+    
+    private var minutes: Int {
+        (Int(remainingSeconds) % 3600) / 60
+    }
+    
+    private var seconds: Int {
+        Int(remainingSeconds) % 60
+    }
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Hours
+            AnimatedDigit(value: hours / 10)
+            AnimatedDigit(value: hours % 10)
+            
+            Text(":")
+                .font(.funnelLight(11))
+                .foregroundColor(.tymerDarkGray)
+            
+            // Minutes
+            AnimatedDigit(value: minutes / 10)
+            AnimatedDigit(value: minutes % 10)
+            
+            Text(":")
+                .font(.funnelLight(11))
+                .foregroundColor(.tymerDarkGray)
+            
+            // Seconds
+            AnimatedDigit(value: seconds / 10)
+            AnimatedDigit(value: seconds % 10)
+        }
+    }
+}
+
+// MARK: - Single Animated Digit
+struct AnimatedDigit: View {
+    let value: Int
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let digitHeight = geometry.size.height
+            
+            VStack(spacing: 0) {
+                ForEach(0..<10, id: \.self) { digit in
+                    Text("\(digit)")
+                        .font(.funnelLight(11))
+                        .foregroundColor(.tymerDarkGray)
+                        .frame(height: digitHeight)
+                }
+            }
+            .offset(y: -CGFloat(value) * digitHeight)
+            .animation(.easeInOut(duration: 0.3), value: value)
+        }
+        .frame(width: 7, height: 14)
+        .clipped()
     }
 }
 

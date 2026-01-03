@@ -39,6 +39,7 @@ final class AppState {
     var isWindowOpen: Bool = false
     var currentWindow: TimeWindow?
     var nextWindowCountdown: String = ""
+    var nextWindowRemainingSeconds: TimeInterval = 0 // Precise countdown in seconds
     var timeWindows: [TimeWindow] = [] // Loaded from Supabase
 
     // MARK: Weekly Digest
@@ -293,6 +294,7 @@ final class AppState {
             isWindowOpen = true
             currentWindow = windows.first ?? .morning
             nextWindowCountdown = "Mode démo"
+            nextWindowRemainingSeconds = 0
             return
         }
 
@@ -301,6 +303,7 @@ final class AppState {
                 isWindowOpen = true
                 currentWindow = window
                 if let remaining = window.remainingTime(at: now) {
+                    nextWindowRemainingSeconds = remaining
                     let minutes = Int(remaining / 60)
                     nextWindowCountdown = "Ferme dans \(minutes)min"
                 }
@@ -310,10 +313,13 @@ final class AppState {
 
         isWindowOpen = false
         currentWindow = nil
-        nextWindowCountdown = calculateNextWindowCountdown(from: now)
+        let (countdown, seconds) = calculateNextWindowCountdownWithSeconds(from: now)
+        nextWindowCountdown = countdown
+        nextWindowRemainingSeconds = seconds
     }
     
-    private func calculateNextWindowCountdown(from date: Date) -> String {
+    /// Returns (display string, remaining seconds) for next window
+    private func calculateNextWindowCountdownWithSeconds(from date: Date) -> (String, TimeInterval) {
         let calendar = Calendar.current
         let currentHour = calendar.component(.hour, from: date)
 
@@ -322,7 +328,7 @@ final class AppState {
         let sortedWindows = windows.sorted { $0.start < $1.start }
 
         guard !sortedWindows.isEmpty else {
-            return "Aucune fenêtre"
+            return ("Aucune fenêtre", 0)
         }
 
         // Find the next window
@@ -336,6 +342,7 @@ final class AppState {
                 var components = calendar.dateComponents([.year, .month, .day], from: date)
                 components.hour = window.start
                 components.minute = 0
+                components.second = 0
                 nextDate = calendar.date(from: components)
                 break
             }
@@ -348,26 +355,36 @@ final class AppState {
             components.day! += 1
             components.hour = nextWindow!.start
             components.minute = 0
+            components.second = 0
             nextDate = calendar.date(from: components)
         }
 
         guard let window = nextWindow, let targetDate = nextDate else {
-            return "Aucune fenêtre"
+            return ("Aucune fenêtre", 0)
         }
 
         let interval = targetDate.timeIntervalSince(date)
         let hours = Int(interval / 3600)
         let minutes = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
 
+        let displayString: String
         if hours > 0 {
-            return "\(window.label) dans \(hours)h\(minutes)"
+            displayString = "\(window.label) dans \(hours)h\(minutes)"
         } else {
-            return "Dans \(minutes)min"
+            displayString = "Dans \(minutes)min"
         }
+        
+        return (displayString, max(0, interval))
+    }
+    
+    // Legacy method for compatibility
+    private func calculateNextWindowCountdown(from date: Date) -> String {
+        return calculateNextWindowCountdownWithSeconds(from: date).0
     }
     
     private func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        // Update every second for precise countdown
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.updateTimeWindowStatus()
         }
     }
