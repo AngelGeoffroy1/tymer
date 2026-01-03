@@ -31,6 +31,8 @@ final class AppState {
     var hasPostedToday: Bool = false
     var currentMomentIndex: Int = 0
     var myTodayMoment: Moment?
+    var isRetakingMoment: Bool = false
+    var momentToReplace: Moment?
 
     // MARK: Time Window State
     var isWindowOpen: Bool = false
@@ -221,7 +223,27 @@ final class AppState {
             await loadData()
         }
     }
-    
+
+    // MARK: - Moment Actions
+
+    @MainActor
+    func deleteMyTodayMoment() async throws {
+        guard let moment = myTodayMoment else { return }
+
+        try await supabase.deleteMoment(moment.id, imagePath: moment.imageName)
+
+        // Reset local state
+        myTodayMoment = nil
+        hasPostedToday = false
+
+        // Remove from weekly digest
+        weeklyDigest.removeAll { $0.id == moment.id }
+
+        // Clear local storage
+        UserDefaults.standard.set(false, forKey: StorageKey.hasPosted)
+        UserDefaults.standard.removeObject(forKey: StorageKey.lastPostDate)
+    }
+
     // MARK: - Time Window Logic
 
     func updateTimeWindowStatus() {
@@ -453,11 +475,23 @@ final class AppState {
         let finalDescription = (cleanDescription?.isEmpty ?? true) ? nil : cleanDescription
 
         isUploadingMoment = true
-        defer { isUploadingMoment = false }
+        defer {
+            isUploadingMoment = false
+            // Reset retake state
+            isRetakingMoment = false
+            momentToReplace = nil
+        }
 
         // Try to upload to Supabase if authenticated
         if supabase.isAuthenticated {
             do {
+                // If retaking, delete the old moment first
+                if isRetakingMoment, let oldMoment = momentToReplace {
+                    try await supabase.deleteMoment(oldMoment.id, imagePath: oldMoment.imageName)
+                    weeklyDigest.removeAll { $0.id == oldMoment.id }
+                    print("Old moment deleted for retake: \(oldMoment.id)")
+                }
+
                 // Compress image
                 guard let imageData = image.jpegData(compressionQuality: 0.8) else {
                     print("Error: Cannot compress image")

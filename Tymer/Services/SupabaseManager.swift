@@ -240,6 +240,22 @@ final class SupabaseManager: ObservableObject {
         return moment
     }
 
+    func deleteMoment(_ momentId: UUID, imagePath: String?) async throws {
+        // Delete image from storage if exists
+        if let imagePath = imagePath {
+            _ = try? await client.storage
+                .from("moments")
+                .remove(paths: [imagePath])
+        }
+
+        // Delete the moment from database
+        try await client
+            .from("moments")
+            .delete()
+            .eq("id", value: momentId.uuidString)
+            .execute()
+    }
+
     // MARK: - Reactions
 
     func addTextReaction(to momentId: UUID, text: String) async throws {

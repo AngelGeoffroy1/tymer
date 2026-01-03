@@ -430,6 +430,9 @@ struct PostCard: View {
     @State private var recordingTimer: Timer?
     @State private var showExpandedReactions = false
     @State private var recordingDuration: Double = 0
+    @State private var showMomentMenu = false
+    @State private var showDeleteConfirmation = false
+    @State private var isDeleting = false
 
     private var windowDisplayText: String {
         let windows = appState.timeWindows.isEmpty ? TimeWindow.defaultWindows : appState.timeWindows
@@ -474,6 +477,34 @@ struct PostCard: View {
         .sheet(isPresented: $showReactionSheet) {
             reactionSheet
         }
+        .confirmationDialog("Options du moment", isPresented: $showMomentMenu, titleVisibility: .hidden) {
+            Button("Reprendre le moment") {
+                // Set retake mode and navigate to capture
+                appState.isRetakingMoment = true
+                appState.momentToReplace = moment
+                appState.currentScreen = .capture
+            }
+            Button("Supprimer", role: .destructive) {
+                showDeleteConfirmation = true
+            }
+            Button("Annuler", role: .cancel) {}
+        }
+        .confirmationDialog("Supprimer ce moment ?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+            Button("Supprimer", role: .destructive) {
+                Task {
+                    isDeleting = true
+                    do {
+                        try await appState.deleteMyTodayMoment()
+                    } catch {
+                        print("Error deleting moment: \(error)")
+                    }
+                    isDeleting = false
+                }
+            }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Cette action est irréversible.")
+        }
     }
     
     private var postHeader: some View {
@@ -488,6 +519,18 @@ struct PostCard: View {
                     .foregroundColor(.tymerGray)
             }
             Spacer()
+
+            // Menu button for my posts
+            if isMyPost {
+                Button {
+                    showMomentMenu = true
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.tymerGray)
+                        .frame(width: 32, height: 32)
+                }
+            }
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 12)

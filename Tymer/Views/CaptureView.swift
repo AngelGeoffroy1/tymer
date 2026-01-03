@@ -23,7 +23,7 @@ struct CaptureView: View {
             Color.tymerBlack
                 .ignoresSafeArea()
 
-            if appState.hasPostedToday {
+            if appState.hasPostedToday && !appState.isRetakingMoment {
                 alreadyPostedContent
             } else if showPreview, let image = capturedImage {
                 previewContent(image: image)
@@ -36,6 +36,11 @@ struct CaptureView: View {
         }
         .onDisappear {
             cameraService.stopSession()
+            // Reset retake mode if user leaves without posting
+            if appState.isRetakingMoment && capturedImage == nil {
+                appState.isRetakingMoment = false
+                appState.momentToReplace = nil
+            }
         }
         .onChange(of: cameraService.capturedImage) { _, newImage in
             if let image = newImage {
