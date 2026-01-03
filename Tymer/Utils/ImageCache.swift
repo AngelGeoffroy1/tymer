@@ -80,21 +80,21 @@ final class ImageCache {
         
         // Load in background
         Task.detached(priority: .background) { [weak self] in
-            guard let url = SupabaseManager.shared.getMomentImageURL(path) else {
-                self?.removeFromPreloading(path)
+            guard let url = await SupabaseManager.shared.getMomentImageURL(path) else {
+                await MainActor.run { self?.removeFromPreloading(path) }
                 return
             }
             
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 if let image = UIImage(data: data) {
-                    self?.set(image, forKey: path)
+                    await MainActor.run { self?.set(image, forKey: path) }
                 }
             } catch {
                 // Silently fail for preloading
             }
             
-            self?.removeFromPreloading(path)
+            await MainActor.run { self?.removeFromPreloading(path) }
         }
     }
     

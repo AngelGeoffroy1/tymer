@@ -207,7 +207,7 @@ final class SupabaseManager: ObservableObject {
     }
 
     func hasPostedToday() async throws -> Bool {
-        guard let userId = userId else { return false }
+        guard userId != nil else { return false }
 
         // Check if user has a moment captured today
         let moments = try await fetchMyMoments(limit: 1)
