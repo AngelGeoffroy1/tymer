@@ -98,15 +98,49 @@ class ImageStorageManager {
     }
 }
 
+// MARK: - Flash Mode
+enum FlashMode: Int, CaseIterable {
+    case off = 0
+    case on = 1
+    case auto = 2
+
+    var avFlashMode: AVCaptureDevice.FlashMode {
+        switch self {
+        case .off: return .off
+        case .on: return .on
+        case .auto: return .auto
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .off: return "bolt.slash.fill"
+        case .on: return "bolt.fill"
+        case .auto: return "bolt.badge.automatic.fill"
+        }
+    }
+
+    func next() -> FlashMode {
+        let allCases = FlashMode.allCases
+        let nextIndex = (self.rawValue + 1) % allCases.count
+        return allCases[nextIndex]
+    }
+}
+
 // MARK: - Camera Service (Live Preview + Capture)
 class CameraService: NSObject, ObservableObject {
     @Published var capturedImage: UIImage?
     @Published var isSessionRunning = false
     @Published var permissionGranted = false
+    @Published var currentCameraPosition: AVCaptureDevice.Position = .back
+    @Published var isUltraWideActive = false
+    @Published var flashMode: FlashMode = .off
+    @Published var isCapturing = false
 
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "camera.session.queue")
     private var photoOutput = AVCapturePhotoOutput()
+    private var currentVideoInput: AVCaptureDeviceInput?
 
     override init() {
         super.init()
@@ -148,6 +182,7 @@ class CameraService: NSObject, ObservableObject {
             }
 
             self.session.addInput(videoInput)
+            self.currentVideoInput = videoInput
 
             // Add photo output
             if self.session.canAddOutput(self.photoOutput) {
@@ -156,6 +191,101 @@ class CameraService: NSObject, ObservableObject {
 
             self.session.commitConfiguration()
         }
+    }
+
+    // MARK: - Switch Camera (Front/Back)
+    func switchCamera() {
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+
+            self.session.beginConfiguration()
+
+            // Remove current input
+            if let currentInput = self.currentVideoInput {
+                self.session.removeInput(currentInput)
+            }
+
+            // Toggle position
+            let newPosition: AVCaptureDevice.Position = self.currentCameraPosition == .back ? .front : .back
+
+            // Get new device
+            guard let newDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: newPosition),
+                  let newInput = try? AVCaptureDeviceInput(device: newDevice),
+                  self.session.canAddInput(newInput) else {
+                self.session.commitConfiguration()
+                return
+            }
+
+            self.session.addInput(newInput)
+            self.currentVideoInput = newInput
+
+            self.session.commitConfiguration()
+
+            DispatchQueue.main.async {
+                self.currentCameraPosition = newPosition
+                self.isUltraWideActive = false
+            }
+
+            // Haptic feedback
+            let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+            DispatchQueue.main.async {
+                impactGenerator.impactOccurred()
+            }
+        }
+    }
+
+    // MARK: - Switch to Ultra Wide Angle
+    func switchToUltraWide() {
+        // Ultra wide only available on back camera
+        guard currentCameraPosition == .back else { return }
+
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+
+            self.session.beginConfiguration()
+
+            // Remove current input
+            if let currentInput = self.currentVideoInput {
+                self.session.removeInput(currentInput)
+            }
+
+            // Try to get ultra wide camera
+            let deviceType: AVCaptureDevice.DeviceType = self.isUltraWideActive ? .builtInWideAngleCamera : .builtInUltraWideCamera
+
+            guard let newDevice = AVCaptureDevice.default(deviceType, for: .video, position: .back),
+                  let newInput = try? AVCaptureDeviceInput(device: newDevice),
+                  self.session.canAddInput(newInput) else {
+                // Fallback to wide angle if ultra wide not available
+                if let wideDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                   let wideInput = try? AVCaptureDeviceInput(device: wideDevice),
+                   self.session.canAddInput(wideInput) {
+                    self.session.addInput(wideInput)
+                    self.currentVideoInput = wideInput
+                }
+                self.session.commitConfiguration()
+                return
+            }
+
+            self.session.addInput(newInput)
+            self.currentVideoInput = newInput
+
+            self.session.commitConfiguration()
+
+            DispatchQueue.main.async {
+                self.isUltraWideActive = !self.isUltraWideActive
+            }
+
+            // Haptic feedback
+            let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+            DispatchQueue.main.async {
+                impactGenerator.impactOccurred()
+            }
+        }
+    }
+
+    // MARK: - Check if Ultra Wide is Available
+    var isUltraWideAvailable: Bool {
+        return AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) != nil
     }
 
     func startSession() {
@@ -178,15 +308,46 @@ class CameraService: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Flash Control
+    func toggleFlash() {
+        flashMode = flashMode.next()
+
+        // Haptic feedback
+        let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+        impactGenerator.impactOccurred()
+    }
+
+    var isFlashAvailable: Bool {
+        guard let device = currentVideoInput?.device else { return false }
+        return device.hasFlash && device.isFlashAvailable
+    }
+
     func capturePhoto() {
+        guard !isCapturing else { return }
+
+        DispatchQueue.main.async {
+            self.isCapturing = true
+        }
+
         let settings = AVCapturePhotoSettings()
-        settings.flashMode = .auto
+
+        // Set flash mode based on current setting
+        if photoOutput.supportedFlashModes.contains(flashMode.avFlashMode) {
+            settings.flashMode = flashMode.avFlashMode
+        } else {
+            settings.flashMode = .off
+        }
+
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 }
 
 extension CameraService: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        DispatchQueue.main.async {
+            self.isCapturing = false
+        }
+
         guard error == nil, let imageData = photo.fileDataRepresentation() else {
             print("Erreur capture photo: \(error?.localizedDescription ?? "unknown")")
             return
@@ -201,16 +362,65 @@ extension CameraService: AVCapturePhotoCaptureDelegate {
 // MARK: - Camera Preview View (Live Feed)
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
+    var onDoubleTap: (() -> Void)?
+    var onPinchOut: (() -> Void)?
 
     func makeUIView(context: Context) -> CameraPreviewUIView {
         let view = CameraPreviewUIView()
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
+
+        // Double tap gesture for switching camera
+        let doubleTapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap))
+        doubleTapGesture.numberOfTapsRequired = 2
+        view.addGestureRecognizer(doubleTapGesture)
+
+        // Pinch gesture for ultra wide
+        let pinchGesture = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch))
+        view.addGestureRecognizer(pinchGesture)
+
         return view
     }
 
     func updateUIView(_ uiView: CameraPreviewUIView, context: Context) {
         uiView.previewLayer.session = session
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDoubleTap: onDoubleTap, onPinchOut: onPinchOut)
+    }
+
+    class Coordinator: NSObject {
+        var onDoubleTap: (() -> Void)?
+        var onPinchOut: (() -> Void)?
+        private var hasTriggered = false
+
+        init(onDoubleTap: (() -> Void)?, onPinchOut: (() -> Void)?) {
+            self.onDoubleTap = onDoubleTap
+            self.onPinchOut = onPinchOut
+        }
+
+        @objc func handleDoubleTap() {
+            onDoubleTap?()
+        }
+
+        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                hasTriggered = false
+            case .changed:
+                // Detect pinch in (zoom out / dezoom) - like BeReal
+                // When fingers come together, scale decreases below 1.0
+                if gesture.scale < 0.75 && !hasTriggered {
+                    hasTriggered = true
+                    onPinchOut?()
+                }
+            case .ended, .cancelled:
+                hasTriggered = false
+            default:
+                break
+            }
+        }
     }
 }
 

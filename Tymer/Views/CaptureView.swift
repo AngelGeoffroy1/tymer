@@ -13,7 +13,7 @@ struct CaptureView: View {
     @StateObject private var cameraService = CameraService()
     @State private var showPreview = false
     @State private var capturedImage: UIImage?
-    @State private var flashAnimation = false
+    @State private var isLoadingCamera = true
     @State private var showPermissionAlert = false
     @State private var momentDescription: String = ""
     @FocusState private var isDescriptionFocused: Bool
@@ -29,13 +29,6 @@ struct CaptureView: View {
                 previewContent(image: image)
             } else {
                 cameraContent
-            }
-
-            // Flash effect
-            if flashAnimation {
-                Color.white
-                    .ignoresSafeArea()
-                    .transition(.opacity)
             }
         }
         .onAppear {
@@ -67,71 +60,178 @@ struct CaptureView: View {
     // MARK: - Camera Content
     private var cameraContent: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                TymerBackButton {
-                    appState.navigate(to: .gate)
+            // Header - BeReal style
+            ZStack {
+                // Back button on left
+                HStack {
+                    Button {
+                        appState.navigate(to: .gate)
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.tymerWhite)
+                            .frame(width: 50, height: 50)
+                            .background(Circle().fill(Color.tymerDarkGray))
+                    }
+                    Spacer()
                 }
-                Spacer()
+
+                // Tymer. centered
+                Text("Tymer.")
+                    .font(.funnelSemiBold(22))
+                    .foregroundColor(.tymerWhite)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
             .padding(.top, 8)
 
             Spacer()
+                .frame(height: 20)
 
-            // Live camera preview in frame
+            // Live camera preview - larger like BeReal
             ZStack {
-                if cameraService.permissionGranted && cameraService.isSessionRunning {
-                    // Live camera feed
-                    CameraPreviewView(session: cameraService.session)
-                        .frame(height: UIScreen.main.bounds.height * 0.55)
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
-                        .padding(.horizontal, 20)
+                // Camera feed (always present when permission granted)
+                if cameraService.permissionGranted {
+                    CameraPreviewView(
+                        session: cameraService.session,
+                        onDoubleTap: {
+                            cameraService.switchCamera()
+                        },
+                        onPinchOut: {
+                            cameraService.switchToUltraWide()
+                        }
+                    )
+                    .frame(height: UIScreen.main.bounds.height * 0.62)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .padding(.horizontal, 12)
+                    // Blur overlay while loading
+                    .overlay {
+                        if !cameraService.isSessionRunning || isLoadingCamera {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(.ultraThinMaterial)
+                                .padding(.horizontal, 12)
+                                .overlay {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .scaleEffect(1.2)
+                                }
+                        }
+                    }
+                    .overlay(alignment: .bottom) {
+                        // Bottom controls overlay - BeReal style (only when ready)
+                        if cameraService.isSessionRunning && !isLoadingCamera {
+                            HStack {
+                                // Flash button
+                                Button {
+                                    cameraService.toggleFlash()
+                                } label: {
+                                    Image(systemName: cameraService.flashMode.iconName)
+                                        .font(.system(size: 18))
+                                        .foregroundColor(cameraService.flashMode == .off ? .white : .yellow)
+                                        .frame(width: 44, height: 44)
+                                }
+                                .opacity(cameraService.currentCameraPosition == .back ? 1 : 0.3)
+                                .disabled(cameraService.currentCameraPosition != .back)
+
+                                Spacer()
+
+                                // Zoom button - centered (smaller size, more opacity)
+                                if cameraService.currentCameraPosition == .back {
+                                    Button {
+                                        cameraService.switchToUltraWide()
+                                    } label: {
+                                        Text(cameraService.isUltraWideActive ? "0.5x" : "1x")
+                                            .font(.funnelSemiBold(12))
+                                            .foregroundColor(.white)
+                                            .frame(width: 36, height: 36)
+                                            .background(
+                                                Circle()
+                                                    .fill(Color.black.opacity(0.7))
+                                            )
+                                    }
+                                }
+
+                                Spacer()
+
+                                // Switch camera button
+                                Button {
+                                    cameraService.switchCamera()
+                                } label: {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(.white)
+                                        .frame(width: 44, height: 44)
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 16)
+                        }
+                    }
+                    // Capture animation overlay
+                    .overlay {
+                        if cameraService.isCapturing {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.black.opacity(0.3))
+                                .padding(.horizontal, 12)
+                        }
+                    }
                 } else {
-                    // Placeholder while loading or permission denied
-                    RoundedRectangle(cornerRadius: 24)
+                    // Permission denied placeholder
+                    RoundedRectangle(cornerRadius: 20)
                         .fill(Color.tymerDarkGray.opacity(0.3))
-                        .frame(height: UIScreen.main.bounds.height * 0.55)
-                        .padding(.horizontal, 20)
+                        .frame(height: UIScreen.main.bounds.height * 0.62)
+                        .padding(.horizontal, 12)
                         .overlay {
                             VStack(spacing: 16) {
-                                if !cameraService.permissionGranted {
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 48, weight: .light))
-                                        .foregroundColor(.tymerGray)
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 48, weight: .light))
+                                    .foregroundColor(.tymerGray)
 
-                                    Text("Accès caméra requis")
-                                        .font(.tymerBody)
-                                        .foregroundColor(.tymerGray)
+                                Text("Accès caméra requis")
+                                    .font(.tymerBody)
+                                    .foregroundColor(.tymerGray)
 
-                                    Button("Autoriser l'accès") {
-                                        cameraService.checkPermission()
-                                        if !cameraService.permissionGranted {
-                                            showPermissionAlert = true
-                                        }
+                                Button("Autoriser l'accès") {
+                                    cameraService.checkPermission()
+                                    if !cameraService.permissionGranted {
+                                        showPermissionAlert = true
                                     }
-                                    .font(.funnelSemiBold(14))
-                                    .foregroundColor(.tymerWhite)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 10)
-                                    .background(Capsule().fill(Color.tymerDarkGray))
-                                } else {
-                                    ProgressView()
-                                        .tint(.tymerWhite)
-                                    Text("Chargement de la caméra...")
-                                        .font(.funnelLight(14))
-                                        .foregroundColor(.tymerGray)
                                 }
+                                .font(.funnelSemiBold(14))
+                                .foregroundColor(.tymerWhite)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(Capsule().fill(Color.tymerDarkGray))
                             }
                         }
                 }
             }
+            .onChange(of: cameraService.isSessionRunning) { _, isRunning in
+                if isRunning {
+                    // Small delay to let camera stabilize before removing blur
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            isLoadingCamera = false
+                        }
+                    }
+                } else {
+                    isLoadingCamera = true
+                }
+            }
+
+            Spacer()
+                .frame(height: 16)
+
+            // "PHOTO" label - BeReal style
+            Text("PHOTO")
+                .font(.funnelSemiBold(14))
+                .foregroundColor(.yellow)
+                .tracking(1)
 
             Spacer()
 
             // Capture button
             captureButton
-                .padding(.bottom, 60)
+                .padding(.bottom, 40)
         }
     }
 
@@ -144,13 +244,22 @@ struct CaptureView: View {
                     .stroke(Color.tymerWhite, lineWidth: 4)
                     .frame(width: 80, height: 80)
 
-                Circle()
-                    .fill(Color.tymerWhite)
-                    .frame(width: 64, height: 64)
+                if cameraService.isCapturing {
+                    // Loading state
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .tymerWhite))
+                        .scaleEffect(1.2)
+                } else {
+                    Circle()
+                        .fill(Color.tymerWhite)
+                        .frame(width: 64, height: 64)
+                }
             }
         }
-        .disabled(!cameraService.permissionGranted || !cameraService.isSessionRunning)
+        .disabled(!cameraService.permissionGranted || !cameraService.isSessionRunning || cameraService.isCapturing)
         .opacity(cameraService.permissionGranted && cameraService.isSessionRunning ? 1 : 0.5)
+        .scaleEffect(cameraService.isCapturing ? 0.95 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: cameraService.isCapturing)
     }
 
     private func triggerCapture() {
@@ -158,6 +267,8 @@ struct CaptureView: View {
             showPermissionAlert = true
             return
         }
+
+        guard !cameraService.isCapturing else { return }
 
         // Haptic feedback
         let impactGenerator = UIImpactFeedbackGenerator(style: .medium)
@@ -168,20 +279,17 @@ struct CaptureView: View {
     }
 
     private func handleCapturedImage(_ image: UIImage) {
-        // Flash effect
-        withAnimation(.easeIn(duration: 0.1)) {
-            flashAnimation = true
-        }
-
         capturedImage = image
 
+        // Smooth transition to preview
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation(.easeOut(duration: 0.2)) {
-                flashAnimation = false
-            }
-            withAnimation {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                 showPreview = true
             }
+
+            // Success haptic
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
         }
     }
 
@@ -246,13 +354,8 @@ struct CaptureView: View {
                     }
 
                     Button("Annuler") {
-                        withAnimation {
-                            showPreview = false
-                            capturedImage = nil
-                            momentDescription = ""
-                        }
-                        // Restart camera
-                        cameraService.startSession()
+                        // Retour direct à GateView
+                        appState.navigate(to: .gate)
                     }
                     .buttonStyle(.tymerGhost)
                 }
