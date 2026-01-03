@@ -37,7 +37,7 @@ struct Profile: Codable, Identifiable, Equatable {
 
     // Convert to local User model
     func toUser() -> User {
-        User(id: id, firstName: firstName, avatarColor: displayColor)
+        User(id: id, firstName: firstName, avatarColor: displayColor, avatarUrl: avatarUrl)
     }
 }
 

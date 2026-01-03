@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - Friend Row Component
 struct FriendRow: View {
@@ -53,6 +54,9 @@ struct FriendAvatar: View {
     let user: User
     let size: CGFloat
     
+    @State private var loadedImage: UIImage?
+    @State private var isLoading = false
+    
     init(_ user: User, size: CGFloat = 40) {
         self.user = user
         self.size = size
@@ -60,13 +64,65 @@ struct FriendAvatar: View {
     
     var body: some View {
         ZStack {
+            // Fond coloré (toujours visible)
             Circle()
                 .fill(user.avatarColor.opacity(0.3))
                 .frame(width: size, height: size)
             
-            Text(user.initials)
-                .font(.funnelSemiBold(size * 0.4))
-                .foregroundColor(.tymerWhite)
+            // Image avatar si chargée, sinon initiales
+            if let image = loadedImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            } else {
+                initialsView
+            }
+        }
+        .onAppear {
+            loadAvatarImage()
+        }
+    }
+    
+    private var initialsView: some View {
+        Text(user.initials)
+            .font(.funnelSemiBold(size * 0.4))
+            .foregroundColor(.tymerWhite)
+    }
+    
+    private func loadAvatarImage() {
+        guard let avatarUrl = user.avatarUrl, !avatarUrl.isEmpty else { return }
+        guard !isLoading else { return }
+        
+        // Check cache first
+        if let cachedImage = ImageCache.shared.get(forKey: avatarUrl) {
+            loadedImage = cachedImage
+            return
+        }
+        
+        // Load from network
+        guard let url = URL(string: avatarUrl) else { return }
+        
+        isLoading = true
+        
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                if let image = UIImage(data: data) {
+                    // Cache the image
+                    ImageCache.shared.set(image, forKey: avatarUrl)
+                    
+                    await MainActor.run {
+                        loadedImage = image
+                        isLoading = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                }
+            }
         }
     }
 }

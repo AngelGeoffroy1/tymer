@@ -669,6 +669,15 @@ struct TimelineMomentCard: View {
 
     private let cardSize: CGFloat = 70
     private let rotationAngles: [Double] = [-8, 5, -3, 7, -5, 4, -6, 8, -4, 6, -7, 3, -5, 8, -3]
+    
+    // Avatars des réacteurs (max 3 affichés)
+    private var reactorAvatars: [User] {
+        Array(moment.reactions.prefix(3).map { $0.author })
+    }
+    
+    private var extraReactorsCount: Int {
+        max(0, moment.reactions.count - 3)
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -711,22 +720,39 @@ struct TimelineMomentCard: View {
                             lineWidth: 2
                         )
                 )
+                // Overlay avec les avatars des réacteurs dans le coin haut droit
+                .overlay(alignment: .topTrailing) {
+                    if !moment.reactions.isEmpty {
+                        HStack(spacing: -6) {
+                            ForEach(Array(reactorAvatars.enumerated()), id: \.element.id) { idx, reactor in
+                                FriendAvatar(reactor, size: 18)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.tymerBlack, lineWidth: 1.5)
+                                    )
+                                    .zIndex(Double(3 - idx))
+                            }
+                            
+                            // Badge +N si plus de 3 réactions
+                            if extraReactorsCount > 0 {
+                                Circle()
+                                    .fill(Color.tymerDarkGray)
+                                    .frame(width: 18, height: 18)
+                                    .overlay(
+                                        Text("+\(extraReactorsCount)")
+                                            .font(.system(size: 8, weight: .bold))
+                                            .foregroundColor(.tymerWhite)
+                                    )
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.tymerBlack, lineWidth: 1.5)
+                                    )
+                            }
+                        }
+                        .offset(x: 6, y: -6)
+                    }
+                }
                 .rotationEffect(.degrees(rotationAngles[index % rotationAngles.count]))
-
-                // Author badge
-                Circle()
-                    .fill(moment.author.avatarColor)
-                    .frame(width: 22, height: 22)
-                    .overlay(
-                        Text(moment.author.initials)
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white)
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(Color.tymerBlack, lineWidth: 2)
-                    )
-                    .offset(x: cardSize/2 - 8, y: -cardSize/2 + 8)
             }
             .frame(width: cardSize + 20, height: cardSize + 20)
             .offset(y: index % 2 == 0 ? -10 : 10)
@@ -1078,26 +1104,6 @@ struct MomentDetailOverlay: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             isPresented = false
         }
-    }
-}
-
-// MARK: - Image Cache for faster loading
-
-final class ImageCache {
-    static let shared = ImageCache()
-    private var cache = NSCache<NSString, UIImage>()
-
-    private init() {
-        cache.countLimit = 50
-        cache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
-    }
-
-    func get(forKey key: String) -> UIImage? {
-        cache.object(forKey: key as NSString)
-    }
-
-    func set(_ image: UIImage, forKey key: String) {
-        cache.setObject(image, forKey: key as NSString)
     }
 }
 

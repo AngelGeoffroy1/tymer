@@ -13,11 +13,13 @@ struct User: Identifiable, Equatable {
     let id: UUID
     let firstName: String
     let avatarColor: Color
+    let avatarUrl: String?
     
-    init(id: UUID = UUID(), firstName: String, avatarColor: Color = .tymerGray) {
+    init(id: UUID = UUID(), firstName: String, avatarColor: Color = .tymerGray, avatarUrl: String? = nil) {
         self.id = id
         self.firstName = firstName
         self.avatarColor = avatarColor
+        self.avatarUrl = avatarUrl
     }
     
     /// Initiales pour l'avatar
