@@ -505,7 +505,7 @@ struct FriendRowWithActivity: View {
     var body: some View {
         HStack(spacing: 16) {
             // Avatar with activity indicator
-            ZStack(alignment: .bottomTrailing) {
+            ZStack(alignment: .topLeading) {
                 FriendAvatar(user, size: 50)
                 
                 // Green dot for recent activity
@@ -517,7 +517,7 @@ struct FriendRowWithActivity: View {
                             Circle()
                                 .stroke(Color.tymerBlack, lineWidth: 2)
                         )
-                        .offset(x: 2, y: 2)
+                        .offset(x: -2, y: -2)
                 }
             }
 

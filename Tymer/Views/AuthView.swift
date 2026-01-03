@@ -16,25 +16,23 @@ struct AuthView: View {
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var firstName = ""
-    @State private var selectedColor: Color = .blue
 
     @State private var showError = false
     @State private var errorMessage = ""
-
-    private let availableColors: [Color] = [
-        .red, .blue, .green, .orange, .purple,
-        .pink, .cyan, .yellow, .mint, .indigo, .teal, .brown
-    ]
 
     var body: some View {
         ZStack {
             Color.tymerBlack.ignoresSafeArea()
 
-            ScrollView {
+            VStack(spacing: 0) {
+                // Logo fixed at top
+                logoSection
+                    .padding(.top, 16)
+                
+                Spacer()
+                
+                // Centered form content
                 VStack(spacing: 32) {
-                    // Logo
-                    logoSection
-
                     // Title
                     titleSection
 
@@ -46,11 +44,16 @@ struct AuthView: View {
 
                     // Toggle Mode
                     toggleModeButton
-
-                    Spacer(minLength: 50)
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, 60)
+                
+                Spacer()
+                
+                // Debug: Reset Onboarding button
+                #if DEBUG
+                debugSection
+                    .padding(.bottom, 20)
+                #endif
             }
         }
         .alert("Erreur", isPresented: $showError) {
@@ -59,19 +62,28 @@ struct AuthView: View {
             Text(errorMessage)
         }
     }
+    
+    // MARK: - Debug Section (only in DEBUG builds)
+    #if DEBUG
+    private var debugSection: some View {
+        Button {
+            appState.hasCompletedOnboarding = false
+            appState.navigate(to: .onboarding)
+        } label: {
+            Text("🛠 Onboarding")
+                .font(.funnelLight(11))
+                .foregroundColor(.tymerDarkGray.opacity(0.5))
+        }
+        .padding(.top, 20)
+    }
+    #endif
 
     // MARK: - Logo Section
 
     private var logoSection: some View {
-        VStack(spacing: 8) {
-            Text("Tymer")
-                .font(.funnelSemiBold(48))
-                .foregroundColor(.tymerWhite)
-
-            Text("Capture ton moment")
-                .font(.funnelLight(16))
-                .foregroundColor(.tymerGray)
-        }
+        Text("Tymer")
+            .font(.funnelSemiBold(32))
+            .foregroundColor(.tymerWhite)
     }
 
     // MARK: - Title Section
@@ -99,9 +111,6 @@ struct AuthView: View {
                     text: $firstName,
                     icon: "person.fill"
                 )
-
-                // Color Picker
-                colorPicker
             }
 
             // Email
@@ -133,34 +142,7 @@ struct AuthView: View {
         }
     }
 
-    // MARK: - Color Picker
 
-    private var colorPicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Choisis ta couleur")
-                .font(.funnelLight(14))
-                .foregroundColor(.tymerGray)
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
-                ForEach(availableColors, id: \.self) { color in
-                    Circle()
-                        .fill(color)
-                        .frame(width: 40, height: 40)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: selectedColor == color ? 3 : 0)
-                        )
-                        .scaleEffect(selectedColor == color ? 1.1 : 1.0)
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3)) {
-                                selectedColor = color
-                            }
-                        }
-                }
-            }
-        }
-        .padding(.vertical, 8)
-    }
 
     // MARK: - Submit Button
 
@@ -239,7 +221,7 @@ struct AuthView: View {
                     email: email,
                     password: password,
                     firstName: firstName,
-                    avatarColor: selectedColor.colorName
+                    avatarColor: "gray"  // Default color
                 )
             } else {
                 try await supabase.signIn(email: email, password: password)
@@ -262,7 +244,6 @@ struct AuthView: View {
         password = ""
         confirmPassword = ""
         firstName = ""
-        selectedColor = .blue
     }
 }
 
