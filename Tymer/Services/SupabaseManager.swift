@@ -76,7 +76,8 @@ final class SupabaseManager: ObservableObject {
             currentSession = response.session
 
             if currentSession != nil {
-                await fetchCurrentProfile()
+                // Retry fetching profile to ensure trigger has completed
+                await fetchCurrentProfileWithRetry()
             }
         } catch {
             errorMessage = parseAuthError(error)
@@ -152,6 +153,38 @@ final class SupabaseManager: ObservableObject {
         }
     }
 
+    /// Fetch profile with retry logic for newly created accounts
+    private func fetchCurrentProfileWithRetry(maxRetries: Int = 5) async {
+        guard let userId = userId else { return }
+
+        for attempt in 1...maxRetries {
+            do {
+                let profile: Profile = try await client
+                    .from("profiles")
+                    .select()
+                    .eq("id", value: userId.uuidString)
+                    .single()
+                    .execute()
+                    .value
+
+                currentProfile = profile
+                print("✅ Profile fetched successfully on attempt \(attempt)")
+                return
+            } catch {
+                print("⚠️ Attempt \(attempt)/\(maxRetries) failed to fetch profile: \(error)")
+
+                // Don't wait on the last attempt
+                if attempt < maxRetries {
+                    // Exponential backoff: 200ms, 400ms, 800ms, 1600ms
+                    let delay = UInt64(200_000_000 * (1 << (attempt - 1))) // nanoseconds
+                    try? await Task.sleep(nanoseconds: delay)
+                }
+            }
+        }
+
+        print("❌ Failed to fetch profile after \(maxRetries) attempts")
+    }
+
     func updateProfile(firstName: String? = nil) async throws {
         guard let userId = userId else { return }
 
@@ -216,7 +249,7 @@ final class SupabaseManager: ObservableObject {
         return Calendar.current.isDateInToday(lastMoment.capturedAt)
     }
 
-    func createMoment(imagePath: String?, description: String?) async throws -> MomentDTO {
+    func createMoment(imagePath: String?, videoPath: String? = nil, mediaType: String? = "photo", videoDuration: Float? = nil, description: String?) async throws -> MomentDTO {
         guard let userId = userId else {
             throw NSError(domain: "SupabaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "Non authentifié"])
         }
@@ -224,6 +257,9 @@ final class SupabaseManager: ObservableObject {
         let newMoment = CreateMomentDTO(
             authorId: userId,
             imagePath: imagePath,
+            videoPath: videoPath,
+            mediaType: mediaType,
+            videoDuration: videoDuration,
             description: description
         )
 
@@ -238,12 +274,19 @@ final class SupabaseManager: ObservableObject {
         return moment
     }
 
-    func deleteMoment(_ momentId: UUID, imagePath: String?) async throws {
+    func deleteMoment(_ momentId: UUID, imagePath: String?, videoPath: String? = nil) async throws {
         // Delete image from storage if exists
         if let imagePath = imagePath {
             _ = try? await client.storage
                 .from("moments")
                 .remove(paths: [imagePath])
+        }
+
+        // Delete video from storage if exists
+        if let videoPath = videoPath {
+            _ = try? await client.storage
+                .from("moments")
+                .remove(paths: [videoPath])
         }
 
         // Delete the moment from database
@@ -496,7 +539,28 @@ final class SupabaseManager: ObservableObject {
         return fileName
     }
 
+    func uploadMomentVideo(_ videoData: Data) async throws -> String {
+        guard let userId = userId else {
+            throw NSError(domain: "SupabaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "Non authentifié"])
+        }
+
+        // UUID must be lowercase to match auth.uid() in RLS policies
+        let fileName = "\(userId.uuidString.lowercased())/\(UUID().uuidString.lowercased()).mp4"
+
+        try await client.storage
+            .from("moments")
+            .upload(fileName, data: videoData, options: FileOptions(contentType: "video/mp4"))
+
+        return fileName
+    }
+
     func getMomentImageURL(_ path: String) -> URL? {
+        try? client.storage
+            .from("moments")
+            .getPublicURL(path: path)
+    }
+
+    func getMomentVideoURL(_ path: String) -> URL? {
         try? client.storage
             .from("moments")
             .getPublicURL(path: path)

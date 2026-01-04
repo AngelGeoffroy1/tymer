@@ -391,6 +391,8 @@ struct ProfileView: View {
         Button {
             Task {
                 try? await supabase.signOut()
+                // Clear all user data to prevent data leaking to next session
+                appState.clearAllData()
                 appState.navigate(to: .auth)
             }
         } label: {

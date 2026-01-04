@@ -98,6 +98,94 @@ class ImageStorageManager {
     }
 }
 
+// MARK: - Video Storage Manager
+class VideoStorageManager {
+    static let shared = VideoStorageManager()
+
+    private let fileManager = FileManager.default
+
+    private var videosDirectory: URL {
+        let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let videosPath = documentsPath.appendingPathComponent("CapturedVideos", isDirectory: true)
+
+        if !fileManager.fileExists(atPath: videosPath.path) {
+            try? fileManager.createDirectory(at: videosPath, withIntermediateDirectories: true)
+        }
+
+        return videosPath
+    }
+
+    /// Génère une URL temporaire pour l'enregistrement vidéo
+    func generateTempVideoURL() -> URL {
+        let videoId = UUID().uuidString
+        return videosDirectory.appendingPathComponent("\(videoId).mp4")
+    }
+
+    /// Sauvegarde une vidéo depuis une URL temporaire et retourne son identifiant
+    func saveVideo(from tempURL: URL) -> String? {
+        let videoId = UUID().uuidString
+        let fileName = "\(videoId).mp4"
+        let destinationURL = videosDirectory.appendingPathComponent(fileName)
+
+        do {
+            // Si le fichier existe déjà à destination, le supprimer
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+            
+            // Déplacer le fichier temp vers la destination finale
+            try fileManager.moveItem(at: tempURL, to: destinationURL)
+            print("🎬 Vidéo sauvegardée: \(fileName)")
+            return videoId
+        } catch {
+            print("🎬 Erreur lors de la sauvegarde vidéo: \(error)")
+            return nil
+        }
+    }
+
+    /// Récupère l'URL d'une vidéo sauvegardée
+    func getVideoURL(withId videoId: String) -> URL? {
+        let fileName = "\(videoId).mp4"
+        let fileURL = videosDirectory.appendingPathComponent(fileName)
+
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            print("🎬 Vidéo non trouvée: \(fileName)")
+            return nil
+        }
+
+        return fileURL
+    }
+
+    /// Supprime une vidéo
+    func deleteVideo(withId videoId: String) {
+        let fileName = "\(videoId).mp4"
+        let fileURL = videosDirectory.appendingPathComponent(fileName)
+        try? fileManager.removeItem(at: fileURL)
+    }
+
+    /// Génère une thumbnail à partir d'une vidéo
+    func generateThumbnail(from videoURL: URL) -> UIImage? {
+        let asset = AVAsset(url: videoURL)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.maximumSize = CGSize(width: 600, height: 600)
+
+        do {
+            let cgImage = try imageGenerator.copyCGImage(at: .zero, actualTime: nil)
+            return UIImage(cgImage: cgImage)
+        } catch {
+            print("🎬 Erreur génération thumbnail: \(error)")
+            return nil
+        }
+    }
+
+    /// Récupère la durée d'une vidéo
+    func getVideoDuration(from videoURL: URL) -> TimeInterval {
+        let asset = AVAsset(url: videoURL)
+        return CMTimeGetSeconds(asset.duration)
+    }
+}
+
 // MARK: - Flash Mode
 enum FlashMode: Int, CaseIterable {
     case off = 0
@@ -127,24 +215,57 @@ enum FlashMode: Int, CaseIterable {
     }
 }
 
+// MARK: - Capture Mode
+enum CaptureMode: String, CaseIterable {
+    case photo
+    case video
+    
+    var displayName: String {
+        switch self {
+        case .photo: return "PHOTO"
+        case .video: return "VIDÉO"
+        }
+    }
+    
+    var accentColor: Color {
+        switch self {
+        case .photo: return .yellow
+        case .video: return .red
+        }
+    }
+}
+
 // MARK: - Camera Service (Live Preview + Capture)
 class CameraService: NSObject, ObservableObject {
     @Published var capturedImage: UIImage?
+    @Published var capturedVideoURL: URL?
+    @Published var capturedVideoDuration: TimeInterval = 0
     @Published var isSessionRunning = false
     @Published var permissionGranted = false
+    @Published var microphonePermissionGranted = false
     @Published var currentCameraPosition: AVCaptureDevice.Position = .back
     @Published var isUltraWideActive = false
     @Published var flashMode: FlashMode = .off
     @Published var isCapturing = false
+    @Published var captureMode: CaptureMode = .photo
+    @Published var isRecordingVideo = false
+    @Published var videoRecordingProgress: Double = 0  // 0.0 à 1.0 (3 secondes)
+    
+    static let maxVideoDuration: TimeInterval = 3.0  // Durée max vidéo
 
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "camera.session.queue")
     private var photoOutput = AVCapturePhotoOutput()
+    private var movieOutput = AVCaptureMovieFileOutput()
     private var currentVideoInput: AVCaptureDeviceInput?
+    private var currentAudioInput: AVCaptureDeviceInput?
+    private var videoRecordingTimer: Timer?
+    private var recordingStartTime: Date?
 
     override init() {
         super.init()
         checkPermission()
+        checkMicrophonePermission()
     }
 
     func checkPermission() {
@@ -166,12 +287,29 @@ class CameraService: NSObject, ObservableObject {
         }
     }
 
+    func checkMicrophonePermission() {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            microphonePermissionGranted = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                DispatchQueue.main.async {
+                    self?.microphonePermissionGranted = granted
+                }
+            }
+        default:
+            microphonePermissionGranted = false
+        }
+    }
+
     private func setupSession() {
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
 
             self.session.beginConfiguration()
-            self.session.sessionPreset = .photo
+            
+            // Utiliser un preset qui supporte à la fois photo et vidéo
+            self.session.sessionPreset = .high
 
             // Add video input
             guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
@@ -184,9 +322,24 @@ class CameraService: NSObject, ObservableObject {
             self.session.addInput(videoInput)
             self.currentVideoInput = videoInput
 
+            // Add audio input for video recording
+            if let audioDevice = AVCaptureDevice.default(for: .audio),
+               let audioInput = try? AVCaptureDeviceInput(device: audioDevice),
+               self.session.canAddInput(audioInput) {
+                self.session.addInput(audioInput)
+                self.currentAudioInput = audioInput
+            }
+
             // Add photo output
             if self.session.canAddOutput(self.photoOutput) {
                 self.session.addOutput(self.photoOutput)
+            }
+
+            // Add movie output
+            if self.session.canAddOutput(self.movieOutput) {
+                self.session.addOutput(self.movieOutput)
+                // Configurer la durée maximale
+                self.movieOutput.maxRecordedDuration = CMTime(seconds: CameraService.maxVideoDuration + 0.5, preferredTimescale: 600)
             }
 
             self.session.commitConfiguration()
@@ -340,6 +493,107 @@ class CameraService: NSObject, ObservableObject {
 
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
+
+    // MARK: - Video Recording
+    
+    func startVideoRecording() {
+        guard captureMode == .video else { return }
+        guard !isRecordingVideo else { return }
+        guard !movieOutput.isRecording else { return }
+        
+        let outputURL = VideoStorageManager.shared.generateTempVideoURL()
+        
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // Configure torch for video if flash is on
+            if self.flashMode == .on, let device = self.currentVideoInput?.device {
+                try? device.lockForConfiguration()
+                if device.hasTorch && device.isTorchAvailable {
+                    device.torchMode = .on
+                }
+                device.unlockForConfiguration()
+            }
+            
+            self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+            
+            DispatchQueue.main.async {
+                self.isRecordingVideo = true
+                self.recordingStartTime = Date()
+                self.videoRecordingProgress = 0
+                
+                // Haptic feedback
+                let impactGenerator = UIImpactFeedbackGenerator(style: .medium)
+                impactGenerator.impactOccurred()
+                
+                // Start progress timer
+                self.videoRecordingTimer?.invalidate()
+                self.videoRecordingTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                    guard let self = self, let startTime = self.recordingStartTime else { return }
+                    let elapsed = Date().timeIntervalSince(startTime)
+                    self.videoRecordingProgress = min(elapsed / CameraService.maxVideoDuration, 1.0)
+                    
+                    // Auto-stop after max duration
+                    if elapsed >= CameraService.maxVideoDuration {
+                        self.stopVideoRecording()
+                    }
+                }
+            }
+        }
+    }
+    
+    func stopVideoRecording() {
+        guard isRecordingVideo else { return }
+        
+        videoRecordingTimer?.invalidate()
+        videoRecordingTimer = nil
+        
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            if self.movieOutput.isRecording {
+                self.movieOutput.stopRecording()
+            }
+            
+            // Turn off torch
+            if let device = self.currentVideoInput?.device {
+                try? device.lockForConfiguration()
+                if device.hasTorch {
+                    device.torchMode = .off
+                }
+                device.unlockForConfiguration()
+            }
+        }
+        
+        DispatchQueue.main.async {
+            self.isRecordingVideo = false
+            self.videoRecordingProgress = 0
+            self.recordingStartTime = nil
+            
+            // Haptic feedback
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+        }
+    }
+    
+    func toggleCaptureMode() {
+        let newMode: CaptureMode = captureMode == .photo ? .video : .photo
+        
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            captureMode = newMode
+        }
+        
+        // Haptic feedback
+        let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+        impactGenerator.impactOccurred()
+    }
+    
+    /// Reset captured media
+    func resetCapture() {
+        capturedImage = nil
+        capturedVideoURL = nil
+        capturedVideoDuration = 0
+    }
 }
 
 extension CameraService: AVCapturePhotoCaptureDelegate {
@@ -356,6 +610,33 @@ extension CameraService: AVCapturePhotoCaptureDelegate {
         DispatchQueue.main.async {
             self.capturedImage = UIImage(data: imageData)
         }
+    }
+}
+
+extension CameraService: AVCaptureFileOutputRecordingDelegate {
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        DispatchQueue.main.async {
+            self.isRecordingVideo = false
+            self.videoRecordingProgress = 0
+        }
+        
+        if let error = error {
+            print("🎬 Erreur enregistrement vidéo: \(error.localizedDescription)")
+            return
+        }
+        
+        // Calculer la durée réelle de la vidéo
+        let duration = VideoStorageManager.shared.getVideoDuration(from: outputFileURL)
+        
+        DispatchQueue.main.async {
+            self.capturedVideoURL = outputFileURL
+            self.capturedVideoDuration = min(duration, CameraService.maxVideoDuration)
+            print("🎬 Vidéo capturée: \(outputFileURL.lastPathComponent), durée: \(String(format: "%.1f", duration))s")
+        }
+    }
+    
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        print("🎬 Enregistrement démarré: \(fileURL.lastPathComponent)")
     }
 }
 

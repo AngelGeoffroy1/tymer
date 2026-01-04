@@ -49,6 +49,9 @@ struct MomentDTO: Codable, Identifiable {
     let id: UUID
     let authorId: UUID
     let imagePath: String?
+    let videoPath: String?
+    let mediaType: String?  // "photo" ou "video"
+    let videoDuration: Float?
     let description: String?
     let capturedAt: Date
     let createdAt: Date
@@ -62,6 +65,9 @@ struct MomentDTO: Codable, Identifiable {
         case id
         case authorId = "author_id"
         case imagePath = "image_path"
+        case videoPath = "video_path"
+        case mediaType = "media_type"
+        case videoDuration = "video_duration"
         case description
         case capturedAt = "captured_at"
         case createdAt = "created_at"
@@ -75,11 +81,18 @@ struct MomentDTO: Codable, Identifiable {
         let author = profiles?.toUser() ?? User(firstName: "Inconnu")
 
         let localReactions = reactions?.map { $0.toReaction() } ?? []
+        
+        // Déterminer le type de média
+        let type: MediaType = (mediaType == "video") ? .video : .photo
+        let duration: TimeInterval? = videoDuration != nil ? TimeInterval(videoDuration!) : nil
 
         return Moment(
             id: id,
             author: author,
             imageName: imagePath,
+            videoPath: videoPath,
+            mediaType: type,
+            videoDuration: duration,
             placeholderColor: author.avatarColor.opacity(0.4),
             capturedAt: capturedAt,
             description: description,
@@ -91,11 +104,17 @@ struct MomentDTO: Codable, Identifiable {
 struct CreateMomentDTO: Codable {
     let authorId: UUID
     let imagePath: String?
+    let videoPath: String?
+    let mediaType: String?
+    let videoDuration: Float?
     let description: String?
 
     enum CodingKeys: String, CodingKey {
         case authorId = "author_id"
         case imagePath = "image_path"
+        case videoPath = "video_path"
+        case mediaType = "media_type"
+        case videoDuration = "video_duration"
         case description
     }
 }

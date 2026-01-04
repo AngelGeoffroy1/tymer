@@ -95,6 +95,36 @@ final class AppState {
         static let lastPostDate = "tymer_last_post_date"
     }
 
+    // MARK: - Data Management
+
+    /// Clear all user-specific data (call on logout or before switching accounts)
+    @MainActor
+    func clearAllData() {
+        // Clear user data
+        currentUser = .currentUser
+        circle = []
+
+        // Clear moments
+        moments = []
+        myTodayMoment = nil
+        weeklyDigest = []
+        hasPostedToday = false
+        currentMomentIndex = 0
+
+        // Clear retake state
+        isRetakingMoment = false
+        momentToReplace = nil
+
+        // Stop any audio playback
+        stopVoicePlayback()
+
+        // Clear local storage for current user
+        UserDefaults.standard.removeObject(forKey: StorageKey.hasPosted)
+        UserDefaults.standard.removeObject(forKey: StorageKey.lastPostDate)
+
+        print("🧹 All user data cleared")
+    }
+
     // MARK: - Data Loading (Supabase)
 
     @MainActor
@@ -268,7 +298,7 @@ final class AppState {
     func deleteMyTodayMoment() async throws {
         guard let moment = myTodayMoment else { return }
 
-        try await supabase.deleteMoment(moment.id, imagePath: moment.imageName)
+        try await supabase.deleteMoment(moment.id, imagePath: moment.imageName, videoPath: moment.videoPath)
 
         // Reset local state
         myTodayMoment = nil
@@ -541,7 +571,7 @@ final class AppState {
             do {
                 // If retaking, delete the old moment first
                 if isRetakingMoment, let oldMoment = momentToReplace {
-                    try await supabase.deleteMoment(oldMoment.id, imagePath: oldMoment.imageName)
+                    try await supabase.deleteMoment(oldMoment.id, imagePath: oldMoment.imageName, videoPath: oldMoment.videoPath)
                     weeklyDigest.removeAll { $0.id == oldMoment.id }
                     print("Old moment deleted for retake: \(oldMoment.id)")
                 }
@@ -602,6 +632,120 @@ final class AppState {
         saveLocalData()
 
         print("Moment posté localement: \(imageId)")
+    }
+
+    // MARK: - Video Moment Posting
+
+    /// Poste un moment avec une vidéo capturée et une description optionnelle
+    func postMomentWithVideo(_ videoURL: URL, duration: TimeInterval, description: String? = nil) {
+        Task { @MainActor in
+            await postMomentWithVideoAsync(videoURL, duration: duration, description: description)
+        }
+    }
+
+    @MainActor
+    private func postMomentWithVideoAsync(_ videoURL: URL, duration: TimeInterval, description: String?) async {
+        // Nettoyer la description (nil si vide)
+        let cleanDescription = description?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalDescription = (cleanDescription?.isEmpty ?? true) ? nil : cleanDescription
+
+        isUploadingMoment = true
+        defer {
+            isUploadingMoment = false
+            // Reset retake state
+            isRetakingMoment = false
+            momentToReplace = nil
+        }
+
+        // Try to upload to Supabase if authenticated
+        if supabase.isAuthenticated {
+            do {
+                // If retaking, delete the old moment first
+                if isRetakingMoment, let oldMoment = momentToReplace {
+                    try await supabase.deleteMoment(oldMoment.id, imagePath: oldMoment.imageName, videoPath: oldMoment.videoPath)
+                    weeklyDigest.removeAll { $0.id == oldMoment.id }
+                    print("🎬 Old moment deleted for retake: \(oldMoment.id)")
+                }
+
+                // Read video data
+                guard let videoData = try? Data(contentsOf: videoURL) else {
+                    print("🎬 Error: Cannot read video file")
+                    fallbackPostVideoMoment(videoURL, duration: duration, description: finalDescription)
+                    return
+                }
+
+                // Upload video to Supabase Storage
+                let videoPath = try await supabase.uploadMomentVideo(videoData)
+                print("🎬 Video uploaded to Supabase: \(videoPath)")
+
+                // Generate and upload thumbnail
+                var thumbnailPath: String? = nil
+                if let thumbnail = VideoStorageManager.shared.generateThumbnail(from: videoURL),
+                   let thumbnailData = thumbnail.jpegData(compressionQuality: 0.8) {
+                    thumbnailPath = try await supabase.uploadMomentImage(thumbnailData)
+                    print("🎬 Thumbnail uploaded: \(thumbnailPath ?? "none")")
+                }
+
+                // Create moment in database
+                let momentDTO = try await supabase.createMoment(
+                    imagePath: thumbnailPath,
+                    videoPath: videoPath,
+                    mediaType: "video",
+                    videoDuration: Float(duration),
+                    description: finalDescription
+                )
+                let newMoment = momentDTO.toMoment()
+
+                myTodayMoment = newMoment
+                weeklyDigest.insert(newMoment, at: 0)
+                hasPostedToday = true
+
+                print("🎬 Moment vidéo posté sur Supabase: \(momentDTO.id), durée: \(String(format: "%.1f", duration))s")
+                return
+
+            } catch {
+                print("🎬 Error posting video to Supabase: \(error)")
+                // Fallback to local storage
+            }
+        }
+
+        // Fallback: save locally
+        fallbackPostVideoMoment(videoURL, duration: duration, description: finalDescription)
+    }
+
+    private func fallbackPostVideoMoment(_ videoURL: URL, duration: TimeInterval, description: String?) {
+        // Sauvegarder la vidéo localement
+        guard let videoId = VideoStorageManager.shared.saveVideo(from: videoURL) else {
+            print("🎬 Erreur: Impossible de sauvegarder la vidéo")
+            return
+        }
+
+        // Générer une thumbnail pour l'affichage
+        var thumbnailId: String? = nil
+        if let savedVideoURL = VideoStorageManager.shared.getVideoURL(withId: videoId),
+           let thumbnail = VideoStorageManager.shared.generateThumbnail(from: savedVideoURL) {
+            thumbnailId = ImageStorageManager.shared.saveImage(thumbnail)
+        }
+
+        let newMoment = Moment(
+            author: currentUser,
+            imageName: thumbnailId,
+            videoPath: videoId,
+            mediaType: .video,
+            videoDuration: duration,
+            placeholderColor: .tymerDarkGray,
+            capturedAt: Date(),
+            description: description
+        )
+
+        myTodayMoment = newMoment
+        weeklyDigest.insert(newMoment, at: 0)
+        hasPostedToday = true
+
+        UserDefaults.standard.set(Date(), forKey: StorageKey.lastPostDate)
+        saveLocalData()
+
+        print("🎬 Moment vidéo posté localement (fallback): \(videoId)")
     }
     
     // MARK: - Reaction Actions

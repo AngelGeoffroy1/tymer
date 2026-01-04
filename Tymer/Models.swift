@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import AVFoundation
 
 // MARK: - User Model
 struct User: Identifiable, Equatable {
@@ -28,11 +29,20 @@ struct User: Identifiable, Equatable {
     }
 }
 
+// MARK: - Media Type
+enum MediaType: String, Codable {
+    case photo
+    case video
+}
+
 // MARK: - Moment Model (Post du jour)
 struct Moment: Identifiable {
     let id: UUID
     let author: User
     let imageName: String?  // Nom de l'image dans MockPhotos ou ID d'image capturée
+    let videoPath: String?  // Chemin vers la vidéo si c'est une vidéo
+    let mediaType: MediaType
+    let videoDuration: TimeInterval?  // Durée de la vidéo (max 3 secondes)
     let placeholderColor: Color
     let capturedAt: Date
     var description: String?  // Description du moment
@@ -42,6 +52,9 @@ struct Moment: Identifiable {
         id: UUID = UUID(),
         author: User,
         imageName: String? = nil,
+        videoPath: String? = nil,
+        mediaType: MediaType = .photo,
+        videoDuration: TimeInterval? = nil,
         placeholderColor: Color = .tymerDarkGray,
         capturedAt: Date = Date(),
         description: String? = nil,
@@ -50,10 +63,18 @@ struct Moment: Identifiable {
         self.id = id
         self.author = author
         self.imageName = imageName
+        self.videoPath = videoPath
+        self.mediaType = mediaType
+        self.videoDuration = videoDuration
         self.placeholderColor = placeholderColor
         self.capturedAt = capturedAt
         self.description = description
         self.reactions = reactions
+    }
+    
+    /// Retourne true si c'est une vidéo
+    var isVideo: Bool {
+        mediaType == .video
     }
     
     /// Heure formatée

@@ -363,6 +363,29 @@ struct MomentThumbnail: View {
             // Photo ou pattern background
             thumbnailContent
             
+            // Video badge
+            if moment.isVideo {
+                VStack {
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 2) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 8))
+                            if let duration = moment.videoDuration {
+                                Text(String(format: "%.0fs", duration))
+                                    .font(.funnelSemiBold(8))
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.red.opacity(0.9)))
+                        .padding(6)
+                    }
+                    Spacer()
+                }
+            }
+            
             // Date pour le digest
             VStack {
                 Spacer()

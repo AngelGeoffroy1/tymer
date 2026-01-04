@@ -409,17 +409,31 @@ struct CircleView: View {
 
         isLoadingInvite = true
         Task {
-            do {
-                let code = try await SupabaseManager.shared.getOrCreateInvitation()
-                await MainActor.run {
-                    inviteCode = code
-                    isLoadingInvite = false
+            // Retry logic for newly created accounts
+            var lastError: Error?
+            for attempt in 1...3 {
+                do {
+                    let code = try await SupabaseManager.shared.getOrCreateInvitation()
+                    await MainActor.run {
+                        inviteCode = code
+                        isLoadingInvite = false
+                    }
+                    return
+                } catch {
+                    lastError = error
+                    print("⚠️ Attempt \(attempt)/3 failed to load invite code: \(error)")
+
+                    if attempt < 3 {
+                        // Wait before retrying: 300ms, 600ms
+                        try? await Task.sleep(nanoseconds: UInt64(300_000_000 * attempt))
+                    }
                 }
-            } catch {
-                print("Error loading invite code: \(error)")
-                await MainActor.run {
-                    isLoadingInvite = false
-                }
+            }
+
+            // All attempts failed
+            print("❌ Failed to load invite code after 3 attempts: \(lastError?.localizedDescription ?? "Unknown error")")
+            await MainActor.run {
+                isLoadingInvite = false
             }
         }
     }

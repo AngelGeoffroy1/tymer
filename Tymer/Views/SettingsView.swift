@@ -370,7 +370,10 @@ struct SettingsView: View {
         do {
             // Sign out the user (note: full account deletion requires admin API or Edge Function)
             try await supabase.signOut()
-            
+
+            // Clear all user data to prevent data leaking to next session
+            appState.clearAllData()
+
             // Navigate to auth screen
             appState.navigate(to: .auth)
             

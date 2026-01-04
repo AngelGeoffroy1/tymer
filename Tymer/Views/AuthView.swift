@@ -227,6 +227,13 @@ struct AuthView: View {
                 try await supabase.signIn(email: email, password: password)
             }
 
+            // CRITICAL: Clear old user data before loading new user's data
+            // This prevents data from previous account persisting after login
+            appState.clearAllData()
+
+            // Reload app data for the new user
+            await appState.loadData()
+
             // Process any pending invitation after login
             appState.processPendingInviteIfNeeded()
 

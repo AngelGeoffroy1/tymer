@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AVKit
 
 // MARK: - Scroll Offset Detector (iOS 17 compatible)
 private struct ScrollOffsetModifier: ViewModifier {
@@ -604,8 +605,26 @@ struct PostCard: View {
     
     private var photoSection: some View {
         ZStack {
-            if let imagePath = moment.imageName {
-                // Check if it's a Supabase path or local
+            // Affichage du contenu (image ou vidéo)
+            if moment.isVideo, let videoPath = moment.videoPath {
+                // Affichage vidéo - check Supabase first, then local
+                if PhotoLoader.isSupabasePath(videoPath),
+                   let videoURL = SupabaseManager.shared.getMomentVideoURL(videoPath) {
+                    // Video from Supabase Storage
+                    MomentVideoPlayer(url: videoURL, isBlurred: isBlurred, blurRadius: progressiveBlurRadius)
+                        .allowsHitTesting(!isBlurred)
+                } else if let videoURL = VideoStorageManager.shared.getVideoURL(withId: videoPath) {
+                    // Video from local storage
+                    MomentVideoPlayer(url: videoURL, isBlurred: isBlurred, blurRadius: progressiveBlurRadius)
+                        .allowsHitTesting(!isBlurred)
+                } else if let imagePath = moment.imageName {
+                    // Fallback sur la thumbnail
+                    thumbnailView(imagePath: imagePath)
+                } else {
+                    placeholderPattern
+                }
+            } else if let imagePath = moment.imageName {
+                // Affichage photo standard
                 if PhotoLoader.isSupabasePath(imagePath) {
                     SupabaseImage(path: imagePath, height: 400, blurRadius: progressiveBlurRadius)
                         .allowsHitTesting(false)
@@ -623,7 +642,7 @@ struct PostCard: View {
             } else {
                 placeholderPattern
             }
-
+            
             // Blurred overlay with lock info
             if isBlurred {
                 VStack(spacing: 12) {
@@ -689,6 +708,23 @@ struct PostCard: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: progressiveBlurRadius)
+    }
+    
+    // MARK: - Thumbnail View (for video fallback)
+    private func thumbnailView(imagePath: String) -> some View {
+        Group {
+            if let uiImage = PhotoLoader.loadImage(named: imagePath) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 400)
+                    .clipped()
+                    .blur(radius: progressiveBlurRadius)
+                    .allowsHitTesting(false)
+            } else {
+                placeholderPattern
+            }
+        }
     }
     
     // MARK: - Locked Interaction
@@ -1210,7 +1246,141 @@ struct AnimatedDigit: View {
     }
 }
 
+// MARK: - Moment Video Player (Optimized, Looping)
+struct MomentVideoPlayer: View {
+    let url: URL
+    let isBlurred: Bool
+    let blurRadius: CGFloat
+
+    @State private var player: AVPlayer?
+    @State private var isMuted = true
+    @State private var isPlayerReady = false
+
+    var body: some View {
+        ZStack {
+            if let player = player {
+                // Custom video layer with proper aspect fill
+                VideoPlayerLayerView(player: player)
+                    .blur(radius: blurRadius)
+                    .opacity(isPlayerReady ? 1 : 0)
+            }
+
+            // Loading placeholder
+            if !isPlayerReady {
+                Color.tymerDarkGray
+                    .overlay {
+                        ProgressView()
+                            .tint(.white)
+                    }
+            }
+
+            // Mute/Unmute button (only if not blurred)
+            if !isBlurred && isPlayerReady {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button {
+                            isMuted.toggle()
+                            player?.isMuted = isMuted
+                        } label: {
+                            Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .frame(width: 36, height: 36)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .padding(12)
+                    }
+                }
+            }
+        }
+        .frame(height: 400)
+        .clipped()
+        .onAppear {
+            setupPlayer()
+        }
+        .onDisappear {
+            player?.pause()
+        }
+    }
+
+    private func setupPlayer() {
+        let playerItem = AVPlayerItem(url: url)
+        let newPlayer = AVPlayer(playerItem: playerItem)
+        newPlayer.isMuted = isMuted
+
+        // Observe when player is ready
+        playerItem.addObserver(PlayerItemObserver.shared, forKeyPath: "status", options: [.new], context: nil)
+        PlayerItemObserver.shared.onReady = { [self] in
+            DispatchQueue.main.async {
+                self.isPlayerReady = true
+                newPlayer.play()
+            }
+        }
+
+        // Loop video
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { _ in
+            newPlayer.seek(to: .zero)
+            newPlayer.play()
+        }
+
+        player = newPlayer
+
+        // Start playing immediately if already ready
+        if playerItem.status == .readyToPlay {
+            isPlayerReady = true
+            newPlayer.play()
+        }
+    }
+}
+
+// MARK: - Player Item Observer
+private class PlayerItemObserver: NSObject {
+    static let shared = PlayerItemObserver()
+    var onReady: (() -> Void)?
+
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+        if keyPath == "status", let item = object as? AVPlayerItem, item.status == .readyToPlay {
+            onReady?()
+        }
+    }
+}
+
+// MARK: - Video Player Layer View (UIViewRepresentable for proper aspect fill)
+struct VideoPlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> PlayerLayerUIView {
+        let view = PlayerLayerUIView()
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = .resizeAspectFill
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerLayerUIView, context: Context) {
+        uiView.playerLayer.player = player
+    }
+}
+
+// MARK: - Player Layer UIView
+class PlayerLayerUIView: UIView {
+    override class var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    var playerLayer: AVPlayerLayer {
+        layer as! AVPlayerLayer
+    }
+}
+
 #Preview {
     GateView()
         .environment(AppState())
 }
+
